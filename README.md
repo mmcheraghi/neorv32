@@ -146,13 +146,12 @@ allows booting application code via UART, TWI or from external SPI flash
 
 **Input / Output**
 
-* standard serial interfaces
-  * [UART](https://stnolting.github.io/neorv32/#_primary_universal_asynchronous_receiver_and_transmitter_uart0) (2x)
-  * [SPI](https://stnolting.github.io/neorv32/#_serial_peripheral_interface_controller_spi) (SPI host)
-  * [SDI](https://stnolting.github.io/neorv32/#_serial_data_interface_controller_sdi) (SPI device)
-  * [TWI](https://stnolting.github.io/neorv32/#_two_wire_serial_interface_controller_twi) (I²C host)
-  * [TWD](https://stnolting.github.io/neorv32/#_two_wire_serial_device_controller_twd) (I²C device)
-  * [ONEWIRE/1-Wire](https://stnolting.github.io/neorv32/#_one_wire_serial_interface_controller_onewire) (host)
+* standard serial interfaces: [UART](https://stnolting.github.io/neorv32/#_primary_universal_asynchronous_receiver_and_transmitter_uart0) (2x),
+[SPI](https://stnolting.github.io/neorv32/#_serial_peripheral_interface_controller_spi) (SPI host),
+[SDI](https://stnolting.github.io/neorv32/#_serial_data_interface_controller_sdi) (SPI device),
+[TWI](https://stnolting.github.io/neorv32/#_two_wire_serial_interface_controller_twi) (I²C host),
+[TWD](https://stnolting.github.io/neorv32/#_two_wire_serial_device_controller_twd) (I²C device),
+[ONEWIRE](https://stnolting.github.io/neorv32/#_one_wire_serial_interface_controller_onewire) (1-wire host)
 * interrupt-capable general purpose IOs ([GPIO](https://stnolting.github.io/neorv32/#_general_purpose_input_and_output_port_gpio)) and
 [PWM](https://stnolting.github.io/neorv32/#_pulse_width_modulation_controller_pwm)
 * smart LED interface ([NEOLED](https://stnolting.github.io/neorv32/#_smart_led_interface_neoled)) to directly control NeoPixel(TM) LEDs
@@ -180,7 +179,8 @@ data transfers and conversions
 * compatible to the "Minimal RISC-V Debug Specification Version 1.0"
 * compatible with **OpenOCD**, **GDB** and **Segger Embedded Studio**
 * RISC-V [trigger module](https://stnolting.github.io/neorv32/#_trigger_module) for hardware-assisted break- and watchpoints
-* optional authentication module to implement custom security mechanisms
+* optional JTAG authentication module to implement custom security mechanisms
+* execution trace buffer ([TRACER](https://stnolting.github.io/neorv32/#_execution_trace_buffer_tracer))
 
 
 ## FPGA Implementation Results
@@ -280,5 +280,4 @@ permissive [license](https://github.com/stnolting/neorv32/blob/main/LICENSE).
 
 ---------------------------------------
 
-:heart: A big shout-out to the community and all the [contributors](https://github.com/stnolting/neorv32/graphs/contributors) -
-this project would not be where it is without them!
+:heart: A big shout-out to the community and all the [contributors](https://github.com/stnolting/neorv32/graphs/contributors)!

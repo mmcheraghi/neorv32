@@ -57,7 +57,7 @@ entity neorv32_tb is
     ICACHE_NUM_BLOCKS   : natural range 1 to 4096        := 64;          -- i-cache: number of blocks (min 1), has to be a power of 2
     DCACHE_EN           : boolean                        := true;        -- implement data cache
     DCACHE_NUM_BLOCKS   : natural range 1 to 4096        := 32;          -- d-cache: number of blocks (min 1), has to be a power of 2
-    CACHE_BLOCK_SIZE    : natural range 4 to 1024        := 32;          -- i-cache/d-cache: block size in bytes (min 4), has to be a power of 2
+    CACHE_BLOCK_SIZE    : natural range 8 to 1024        := 32;          -- i-cache/d-cache: block size in bytes (min 8), has to be a power of 2
     -- external memory A --
     EXT_MEM_A_EN        : boolean                        := false;       -- enable memory
     EXT_MEM_A_BASE      : std_ulogic_vector(31 downto 0) := x"00000000"; -- base address, has to be word-aligned
@@ -216,7 +216,9 @@ begin
     IO_DMA_DSC_FIFO     => 8,
     IO_SLINK_EN         => true,
     IO_SLINK_RX_FIFO    => 4,
-    IO_SLINK_TX_FIFO    => 4
+    IO_SLINK_TX_FIFO    => 4,
+    IO_TRACER_EN        => true,
+    IO_TRACER_BUFFER    => 32
   )
   port map (
     -- Global control --
