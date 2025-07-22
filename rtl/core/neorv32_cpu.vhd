@@ -109,6 +109,7 @@ architecture neorv32_cpu_rtl of neorv32_cpu is
 
   -- local signals --
   signal ctrl        : ctrl_bus_t;                         -- main control bus
+  signal fetch_ctrl  : ctrl_bus_t;                         -- fetch control bus
   signal frontend    : if_bus_t;                           -- instruction-fetch interface
   signal hwtrig      : std_ulogic;                         -- hardware trigger firing
   signal rf_wdata    : std_ulogic_vector(XLEN-1 downto 0); -- register file write data
@@ -198,7 +199,7 @@ begin
     -- global control --
     clk_i      => clk_i,      -- global clock, rising edge
     rstn_i     => rstn_i,     -- global reset, low-active, async
-    ctrl_i     => ctrl,       -- main control bus
+    ctrl_i     => fetch_ctrl,       -- main control bus
     -- instruction fetch interface --
     ibus_req_o => ibus_req_o, -- request
     ibus_rsp_i => ibus_rsp_i, -- response
@@ -259,6 +260,7 @@ begin
     clk_i         => clk_i,       -- global clock, rising edge
     rstn_i        => rstn_i,      -- global reset, low-active, async
     ctrl_o        => ctrl,        -- main control bus
+    fetch_ctrl_o  => fetch_ctrl,        -- fetch control bus
     -- instruction fetch (front-end) interface --
     frontend_i    => frontend,    -- front-end status and data
     -- pmp fault --
