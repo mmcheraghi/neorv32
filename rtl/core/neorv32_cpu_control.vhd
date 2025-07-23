@@ -211,11 +211,12 @@ begin
 
   -- Immediate Generator --------------------------------------------------------------------
   -- -------------------------------------------------------------------------------------------
-  imm_gen: process(rstn_i, clk_i)
+  imm_gen: process(exe_engine, frontend_i, rstn_i)
   begin
     if (rstn_i = '0') then
       immediate <= (others => '0');
-    elsif rising_edge(clk_i) then
+    else
+      immediate <= (others => '0');
       if (exe_engine.state = EX_FETCH_WAIT) then -- prepare update of next PC (using ALU's PC + IMM in EX_EXECUTE state)
         if RISCV_ISA_C and (frontend_i.compr = '1') then -- is decompressed C instruction?
           immediate <= x"00000002";
@@ -282,7 +283,8 @@ begin
   -- Execute Engine FSM Comb ----------------------------------------------------------------
   -- -------------------------------------------------------------------------------------------
   execute_engine_fsm_comb: process(exe_engine, debug_ctrl, trap_ctrl, hwtrig_i, opcode, frontend_i, csr,
-                                   ctrl, alu_cp_done_i, lsu_wait_i, alu_add_i, branch_taken, pmp_fault_i)
+                                   ctrl, alu_cp_done_i, lsu_wait_i, alu_add_i, branch_taken, pmp_fault_i,
+                                   immediate)
     variable funct3_v : std_ulogic_vector(2 downto 0);
     variable funct7_v : std_ulogic_vector(6 downto 0);
   begin
@@ -308,7 +310,7 @@ begin
     csr.we_nxt           <= '0';
     csr.re_nxt           <= '0';
     ctrl_nxt             <= ctrl_bus_zero_c; -- all zero/off by default (ALU operation = ZERO, ALU.adder_out = ADD)
-
+    ctrl_nxt.alu_imm     <= immediate;
     -- ALU sign control --
     if (opcode(4) = '1') then -- ALU ops
       ctrl_nxt.alu_unsigned <= funct3_v(0); -- unsigned ALU operation? (SLTIU, SLTU)
@@ -594,7 +596,7 @@ begin
   ctrl_o.alu_opa_mux  <= ctrl.alu_opa_mux;
   ctrl_o.alu_opb_mux  <= ctrl.alu_opb_mux;
   ctrl_o.alu_unsigned <= ctrl.alu_unsigned;
-  ctrl_o.alu_imm      <= immediate;
+  ctrl_o.alu_imm      <= ctrl.alu_imm;
   ctrl_o.alu_cp_alu   <= ctrl.alu_cp_alu;
   ctrl_o.alu_cp_cfu   <= ctrl.alu_cp_cfu;
   ctrl_o.alu_cp_fpu   <= ctrl.alu_cp_fpu;
