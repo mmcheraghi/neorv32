@@ -100,7 +100,7 @@ architecture neorv32_cpu_control_rtl of neorv32_cpu_control is
 
   -- instruction execution engine --
   type exe_engine_state_t is (EX_FETCH_WAIT, EX_TRAP_ENTER, EX_TRAP_EXIT, EX_RESTART, EX_SLEEP, EX_EXECUTE,
-                              EX_ALU_WAIT, EX_BRANCH, EX_BRANCHED, EX_SYSTEM, EX_MEM_REQ, EX_MEM_RSP);
+                              EX_ALU_WAIT, EX_BRANCH, EX_SYSTEM, EX_MEM_REQ, EX_MEM_RSP);
   type exe_engine_t is record
     state : exe_engine_state_t;
     ir    : std_ulogic_vector(31 downto 0); -- instruction word being executed right now
@@ -506,14 +506,10 @@ begin
         if (branch_taken = '1') then -- taken/unconditional branch
           if_reset             <= '1'; -- reset instruction fetch to restart at modified PC
           exe_engine_nxt.pc2   <= alu_add_i(XLEN-1 downto 1) & '0';
-          exe_engine_nxt.state <= EX_FETCH_WAIT;--EX_BRANCHED; -- shortcut (faster than going to EX_RESTART)
+          exe_engine_nxt.state <= EX_FETCH_WAIT;
         else
           exe_engine_nxt.state <= EX_FETCH_WAIT;
         end if;
-
-      when EX_BRANCHED => -- delay cycle to wait for reset of front-end (instruction fetch)
-      -- ------------------------------------------------------------
-        exe_engine_nxt.state <= EX_FETCH_WAIT;
 
       when EX_MEM_REQ => -- trigger memory request
       -- ------------------------------------------------------------
@@ -999,13 +995,13 @@ begin
 
   -- debug-entry halt interrupt? --
   trap_ctrl.irq_fire(1) <= '1' when
-    ((exe_engine.state = EX_EXECUTE) or (exe_engine.state = EX_BRANCHED)) and -- allow halt also after "reset" (#879)
+    ((exe_engine.state = EX_EXECUTE) or (exe_engine.state = EX_BRANCH)) and -- allow halt also after "reset" (#879)
     (trap_ctrl.irq_buf(irq_db_halt_c) = '1') else '0'; -- pending external halt
 
   -- debug-entry single-step interrupt? --
   trap_ctrl.irq_fire(2) <= '1' when
     ((exe_engine.state = EX_EXECUTE) or -- trigger single-step in EX_EXECUTE state
-     ((trap_ctrl.env_entered = '1') and (exe_engine.state = EX_BRANCHED))) and -- also allow triggering when entering a system trap (#887)
+     ((trap_ctrl.env_entered = '1') and (exe_engine.state = EX_BRANCH))) and -- also allow triggering when entering a system trap (#887)
     (trap_ctrl.irq_buf(irq_db_step_c) = '1') else '0'; -- pending single-step halt
 
 
@@ -1547,7 +1543,6 @@ begin
   cnt_event(cnt_event_wait_dis_c) <= '1' when (exe_engine.state = EX_FETCH_WAIT) and (frontend_i.valid = '0')     else '0'; -- instruction dispatch wait cycle
   cnt_event(cnt_event_wait_alu_c) <= '1' when (exe_engine.state = EX_ALU_WAIT)                                  else '0'; -- multi-cycle ALU wait cycle
   cnt_event(cnt_event_branch_c)   <= '1' when (exe_engine.state = EX_BRANCH)                                    else '0'; -- executed branch instruction
-  cnt_event(cnt_event_branched_c) <= '1' when (exe_engine.state = EX_BRANCHED)                                  else '0'; -- control flow transfer
   cnt_event(cnt_event_load_c)     <= '1' when (ctrl.lsu_req = '1') and ((opcode(5) = '0') or (opcode(2) = '1')) else '0'; -- executed load operation
   cnt_event(cnt_event_store_c)    <= '1' when (ctrl.lsu_req = '1') and ((opcode(5) = '1') or (opcode(2) = '1')) else '0'; -- executed store operation
   cnt_event(cnt_event_wait_lsu_c) <= '1' when (ctrl.lsu_req = '0') and (exe_engine.state = EX_MEM_RSP)          else '0'; -- load/store memory wait cycle
