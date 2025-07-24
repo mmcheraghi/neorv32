@@ -85,10 +85,10 @@ begin
         when S_REQUEST => -- request next 32-bit-aligned instruction word
         -- ------------------------------------------------------------
           fetch.restart <= fetch.restart or ctrl_i.if_reset; -- buffer restart request
-          if (ipb.free = "11") then -- free IPB space?
-            fetch.state <= S_PENDING;
-          elsif (fetch.restart = '1') or (ctrl_i.if_reset = '1') then -- restart because of branch
+          if (fetch.restart = '1') or (ctrl_i.if_reset = '1') then -- restart because of branch
             fetch.state <= S_RESTART;
+          elsif (ipb.free = "11") then -- free IPB space?
+            fetch.state <= S_PENDING;
           end if;
 
         when S_PENDING => -- wait for bus response and write instruction data to prefetch buffer
