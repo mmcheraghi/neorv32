@@ -361,7 +361,7 @@ begin
           trap_ctrl.instr_be   <= frontend_i.fault or pmp_fault_i; -- access fault during instruction fetch
           exe_engine_nxt.ci    <= frontend_i.compr; -- this is a de-compressed instruction
           exe_engine_nxt.ir    <= frontend_i.instr; -- instruction word
-          exe_engine_nxt.pc    <= exe_engine.pc2(XLEN-1 downto 1) & '0'; -- PC <= next PC
+          exe_engine_nxt.pc    <= exe_engine_nxt.pc2(XLEN-1 downto 1) & '0'; -- PC <= next PC
           exe_engine_nxt.state <= EX_EXECUTE; -- start executing new instruction
         end if;
 
@@ -398,7 +398,7 @@ begin
       -- ------------------------------------------------------------
         ctrl_nxt.rf_zero_we  <= not bool_to_ulogic_f(CPU_RF_HW_RST_EN); -- house keeping: force writing zero to x0 if it's a phys. register
         if_reset             <= '1';
-        exe_engine_nxt.state <= EX_BRANCHED; -- delay cycle to restart front-end
+        exe_engine_nxt.state <= EX_FETCH_WAIT;
 
       when EX_EXECUTE => -- decode and execute instruction (control will be here for exactly 1 cycle in any case)
       -- ------------------------------------------------------------
@@ -506,7 +506,7 @@ begin
         if (branch_taken = '1') then -- taken/unconditional branch
           if_reset             <= '1'; -- reset instruction fetch to restart at modified PC
           exe_engine_nxt.pc2   <= alu_add_i(XLEN-1 downto 1) & '0';
-          exe_engine_nxt.state <= EX_BRANCHED; -- shortcut (faster than going to EX_RESTART)
+          exe_engine_nxt.state <= EX_FETCH_WAIT;--EX_BRANCHED; -- shortcut (faster than going to EX_RESTART)
         else
           exe_engine_nxt.state <= EX_FETCH_WAIT;
         end if;
