@@ -64,6 +64,7 @@ architecture neorv32_cpu_frontend_rtl of neorv32_cpu_frontend is
   signal cmd16 : std_ulogic_vector(15 downto 0);
   signal cmd32 : std_ulogic_vector(31 downto 0);
 
+  signal ipb_fast_rst : std_ulogic;
 begin
 
   -- ******************************************************************************************************************
@@ -94,14 +95,13 @@ begin
         when S_PENDING => -- wait for bus response and write instruction data to prefetch buffer
         -- ------------------------------------------------------------
           fetch.restart <= fetch.restart or ctrl_i.if_reset; -- buffer restart request
-          if (ibus_rsp_i.ack = '1') then -- wait for bus response
+          if (fetch.restart = '1') or (ctrl_i.if_reset = '1') then -- restart request due to branch
+            fetch.state <= S_RESTART;
+          elsif (ibus_rsp_i.ack = '1') then -- wait for bus response
             fetch.pc    <= std_ulogic_vector(unsigned(fetch.pc) + 4); -- next word
             fetch.pc(1) <= '0'; -- (re-)align to 32-bit
-            if (fetch.restart = '1') or (ctrl_i.if_reset = '1') then -- restart request due to branch
-              fetch.state <= S_RESTART;
-            else -- request next linear instruction word
-              fetch.state <= S_REQUEST;
-            end if;
+            -- request next linear instruction word
+            fetch.state <= S_REQUEST;
           end if;
 
         when others => -- S_RESTART: set new start address
@@ -138,6 +138,8 @@ begin
   ipb.we(0) <= '1' when (fetch.state = S_PENDING) and (ibus_rsp_i.ack = '1') and ((fetch.pc(1) = '0') or (not RISCV_C)) else '0';
   ipb.we(1) <= '1' when (fetch.state = S_PENDING) and (ibus_rsp_i.ack = '1') else '0';
 
+  -- Feed IPB reset pin directly through ctrl_i.if_reset and fetch.restart register
+  ipb_fast_rst <= fetch.restart or ctrl_i.if_reset;
 
   -- Instruction Prefetch Buffer (FIFO) -----------------------------------------------------
   -- -------------------------------------------------------------------------------------------
@@ -156,7 +158,7 @@ begin
       -- control and status --
       clk_i   => clk_i,         -- clock, rising edge
       rstn_i  => rstn_i,        -- async reset, low-active
-      clear_i => fetch.restart, -- sync reset, high-active
+      clear_i => ipb_fast_rst,    -- sync reset, high-active
       half_o  => open,          -- at least half full
       level_o => open,          -- fill level, zero-extended
       -- write port --
