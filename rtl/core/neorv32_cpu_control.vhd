@@ -1540,7 +1540,7 @@ begin
 
   -- NEORV32-specific counter events --
   cnt_event(cnt_event_compr_c)    <= '1' when (exe_engine.state = EX_EXECUTE)  and (exe_engine.ci = '1')        else '0'; -- executed compressed instruction
-  cnt_event(cnt_event_wait_dis_c) <= '1' when (exe_engine.state = EX_FETCH_WAIT) and (frontend_i.valid = '0')     else '0'; -- instruction dispatch wait cycle
+  cnt_event(cnt_event_wait_dis_c) <= '1' when (exe_engine.state = EX_FETCH_WAIT) and (frontend_i.valid = '0')   else '0'; -- instruction dispatch wait cycle
   cnt_event(cnt_event_wait_alu_c) <= '1' when (exe_engine.state = EX_ALU_WAIT)                                  else '0'; -- multi-cycle ALU wait cycle
   cnt_event(cnt_event_branch_c)   <= '1' when (exe_engine.state = EX_BRANCH)                                    else '0'; -- executed branch instruction
   cnt_event(cnt_event_load_c)     <= '1' when (ctrl.lsu_req = '1') and ((opcode(5) = '0') or (opcode(2) = '1')) else '0'; -- executed load operation
