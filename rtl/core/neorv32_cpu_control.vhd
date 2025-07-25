@@ -99,7 +99,7 @@ end neorv32_cpu_control;
 architecture neorv32_cpu_control_rtl of neorv32_cpu_control is
 
   -- instruction execution engine --
-  type exe_engine_state_t is (EX_FETCH_WAIT, EX_TRAP_ENTER, EX_TRAP_EXIT, EX_RESTART, EX_SLEEP, EX_EXECUTE,
+  type exe_engine_state_t is (EX_FETCH_WAIT, EX_TRAP_ENTER, EX_TRAP_EXIT, EX_RESTART, EX_SLEEP, EX_DECODE,
                               EX_ALU_WAIT, EX_BRANCH, EX_SYSTEM, EX_MEM_REQ, EX_MEM_RSP);
   type exe_engine_t is record
     state : exe_engine_state_t;
@@ -217,7 +217,7 @@ begin
       immediate <= (others => '0');
     else
       immediate <= (others => '0');
-      if (exe_engine.state = EX_FETCH_WAIT) then -- prepare update of next PC (using ALU's PC + IMM in EX_EXECUTE state)
+      if (exe_engine.state = EX_FETCH_WAIT) then -- prepare update of next PC (using ALU's PC + IMM in EX_DECODE state)
         if RISCV_ISA_C and (frontend_i.compr = '1') then -- is decompressed C instruction?
           immediate <= x"00000002";
         else
@@ -351,8 +351,8 @@ begin
 
       when EX_FETCH_WAIT => -- wait for ISSUE ENGINE to emit a valid instruction word
       -- ------------------------------------------------------------
-        ctrl_nxt.alu_opa_mux <= '1'; -- prepare update of next PC in EX_EXECUTE (opa = current PC)
-        ctrl_nxt.alu_opb_mux <= '1'; -- prepare update of next PC in EX_EXECUTE (opb = imm = +2/4)
+        ctrl_nxt.alu_opa_mux <= '1'; -- prepare update of next PC in EX_DECODE (opa = current PC)
+        ctrl_nxt.alu_opb_mux <= '1'; -- prepare update of next PC in EX_DECODE (opb = imm = +2/4)
         --
         if (trap_ctrl.env_pending = '1') or (trap_ctrl.exc_fire = '1') then -- pending trap or pending exception (fast)
           exe_engine_nxt.state <= EX_TRAP_ENTER;
@@ -362,7 +362,7 @@ begin
           exe_engine_nxt.ci    <= frontend_i.compr; -- this is a de-compressed instruction
           exe_engine_nxt.ir    <= frontend_i.instr; -- instruction word
           exe_engine_nxt.pc    <= exe_engine_nxt.pc2(XLEN-1 downto 1) & '0'; -- PC <= next PC
-          exe_engine_nxt.state <= EX_EXECUTE; -- start executing new instruction
+          exe_engine_nxt.state <= EX_DECODE; -- start executing new instruction
         end if;
 
       when EX_TRAP_ENTER => -- enter trap environment and jump to trap vector
@@ -400,7 +400,7 @@ begin
         if_reset             <= '1';
         exe_engine_nxt.state <= EX_FETCH_WAIT;
 
-      when EX_EXECUTE => -- decode and execute instruction (control will be here for exactly 1 cycle in any case)
+      when EX_DECODE => -- decode and execute instruction (control will be here for exactly 1 cycle in any case)
       -- ------------------------------------------------------------
         exe_engine_nxt.pc2 <= alu_add_i(XLEN-1 downto 1) & '0'; -- next PC (= PC + immediate)
 
@@ -488,7 +488,7 @@ begin
             end if;
             exe_engine_nxt.state <= EX_SYSTEM;
 
-        end case; -- /EX_EXECUTE
+        end case; -- /EX_DECODE
 
       when EX_ALU_WAIT => -- wait for multi-cycle ALU co-processor operation to finish or trap
       -- ------------------------------------------------------------
@@ -821,7 +821,7 @@ begin
 
   -- Illegal Operation Check ----------------------------------------------------------------
   -- -------------------------------------------------------------------------------------------
-  trap_ctrl.instr_il <= '1' when ((exe_engine.state = EX_EXECUTE) or (exe_engine.state = EX_ALU_WAIT)) and -- check in execution states only
+  trap_ctrl.instr_il <= '1' when ((exe_engine.state = EX_DECODE) or (exe_engine.state = EX_ALU_WAIT)) and -- check in execution states only
                                  ((monitor_exc = '1') or (illegal_cmd = '1')) else '0'; -- instruction timeout or illegal instruction
 
 
@@ -969,7 +969,7 @@ begin
         trap_ctrl.env_pending <= '0';
       end if;
       -- trap environment has just been entered --
-      if (exe_engine.state = EX_EXECUTE) then -- first instruction of trap handler is executing
+      if (exe_engine.state = EX_DECODE) then -- first instruction of trap handler is executing
         trap_ctrl.env_entered <= '0';
       elsif (trap_ctrl.env_enter = '1') then
         trap_ctrl.env_entered <= '1';
@@ -988,19 +988,19 @@ begin
 
   -- system interrupt? --
   trap_ctrl.irq_fire(0) <= '1' when
-    (exe_engine.state = EX_EXECUTE) and -- trigger system IRQ only in EX_EXECUTE state
+    (exe_engine.state = EX_DECODE) and -- trigger system IRQ only in EX_DECODE state
     (or_reduce_f(trap_ctrl.irq_buf(irq_firq_15_c downto irq_msi_irq_c)) = '1') and -- pending system IRQ
     ((csr.mstatus_mie = '1') or (csr.prv_level = priv_mode_u_c)) and -- IRQ only when in M-mode and MIE=1 OR when in U-mode
     (debug_ctrl.run = '0') and (csr.dcsr_step = '0') else '0'; -- no system IRQs when in debug-mode / during single-stepping
 
   -- debug-entry halt interrupt? --
   trap_ctrl.irq_fire(1) <= '1' when
-    ((exe_engine.state = EX_EXECUTE) or (exe_engine.state = EX_BRANCH)) and -- allow halt also after "reset" (#879)
+    ((exe_engine.state = EX_DECODE) or (exe_engine.state = EX_BRANCH)) and -- allow halt also after "reset" (#879)
     (trap_ctrl.irq_buf(irq_db_halt_c) = '1') else '0'; -- pending external halt
 
   -- debug-entry single-step interrupt? --
   trap_ctrl.irq_fire(2) <= '1' when
-    ((exe_engine.state = EX_EXECUTE) or -- trigger single-step in EX_EXECUTE state
+    ((exe_engine.state = EX_DECODE) or -- trigger single-step in EX_DECODE state
      ((trap_ctrl.env_entered = '1') and (exe_engine.state = EX_BRANCH))) and -- also allow triggering when entering a system trap (#887)
     (trap_ctrl.irq_buf(irq_db_step_c) = '1') else '0'; -- pending single-step halt
 
@@ -1536,10 +1536,10 @@ begin
   -- RISC-V-compliant counter events --
   cnt_event(cnt_event_cy_c) <= '0' when (exe_engine.state = EX_SLEEP) else '1'; -- active cycle
   cnt_event(cnt_event_tm_c) <= '0'; -- time: not available
-  cnt_event(cnt_event_ir_c) <= '1' when (exe_engine.state = EX_EXECUTE) else '0'; -- retired (=executed) instruction
+  cnt_event(cnt_event_ir_c) <= '1' when (exe_engine.state = EX_DECODE) else '0'; -- retired (=executed) instruction
 
   -- NEORV32-specific counter events --
-  cnt_event(cnt_event_compr_c)    <= '1' when (exe_engine.state = EX_EXECUTE)  and (exe_engine.ci = '1')        else '0'; -- executed compressed instruction
+  cnt_event(cnt_event_compr_c)    <= '1' when (exe_engine.state = EX_DECODE)  and (exe_engine.ci = '1')         else '0'; -- executed compressed instruction
   cnt_event(cnt_event_wait_dis_c) <= '1' when (exe_engine.state = EX_FETCH_WAIT) and (frontend_i.valid = '0')   else '0'; -- instruction dispatch wait cycle
   cnt_event(cnt_event_wait_alu_c) <= '1' when (exe_engine.state = EX_ALU_WAIT)                                  else '0'; -- multi-cycle ALU wait cycle
   cnt_event(cnt_event_branch_c)   <= '1' when (exe_engine.state = EX_BRANCH)                                    else '0'; -- executed branch instruction
