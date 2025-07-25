@@ -479,7 +479,6 @@ begin
   trace_o.inst  <= ctrl.ir_funct12 & ctrl.rf_rs1 & ctrl.ir_funct3 & ctrl.rf_rd & ctrl.ir_opcode;
   trace_o.rvc   <= ctrl.cnt_event(cnt_event_compr_c);
   trace_o.mode  <= ctrl.cpu_debug & ctrl.cpu_priv;
-  trace_o.delta <= ctrl.cnt_event(cnt_event_branched_c);
   trace_o.trap  <= ctrl.cpu_trap;
 
 
