@@ -761,7 +761,6 @@ package neorv32_package is
   constant cnt_event_wait_dis_c : natural := 4;  -- instruction dispatch wait cycle
   constant cnt_event_wait_alu_c : natural := 5;  -- multi-cycle ALU co-processor wait cycle
   constant cnt_event_branch_c   : natural := 6;  -- executed branch instruction
-  constant cnt_event_branched_c : natural := 7;  -- control flow transfer
   constant cnt_event_load_c     : natural := 8;  -- load operation
   constant cnt_event_store_c    : natural := 9;  -- store operation
   constant cnt_event_wait_lsu_c : natural := 10; -- load-store unit memory wait cycle
