@@ -40,7 +40,7 @@ end neorv32_cpu_frontend;
 architecture neorv32_cpu_frontend_rtl of neorv32_cpu_frontend is
 
   -- instruction fetch engine --
-  type state_t is (S_RESTART, S_REQUEST, S_PENDING, S_DOWNLOADING);
+  type state_t is (S_RESTART, S_REQUEST, S_PENDING, S_DOWNLOADING, S_DELAY);
   type fetch_t is record
     state   : state_t;
     restart : std_ulogic; -- buffered restart request (after branch)
@@ -114,7 +114,7 @@ begin
           fetch_nxt.state  <= S_RESTART;
         elsif (ipb.free = "11") then -- free IPB space?
           fetch_nxt.state  <= S_PENDING;
-	        ibus_req_o.stb   <= '1';
+	  ibus_req_o.stb   <= '1';
           ibus_req_o.lock  <= '1'; -- this is a locked transfer
           ibus_req_o.burst <= '1'; -- this is a burst transfer
         end if;
@@ -145,13 +145,16 @@ begin
             ibus_req_o.stb  <= '1'; -- request next transfer
             fetch_nxt.state <= S_DOWNLOADING;
           else
-            fetch_nxt.state <= S_REQUEST;
+            fetch_nxt.state <= S_DELAY;
           end if;
 
           if (ibus_rsp_i.ack = '1') then -- free IPB space?
             fetch_nxt.pc       <= std_ulogic_vector(unsigned(fetch.pc) + 4); -- next word  
           end if;
-
+	when S_DELAY =>
+	-- ------------------------------------------------------------
+	fetch_nxt.state <= S_REQUEST;
+		  
       when others => -- S_RESTART: set new start address
       -- ------------------------------------------------------------
         fetch_nxt.restart <= '0'; -- restart done
