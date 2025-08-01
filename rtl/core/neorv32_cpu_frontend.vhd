@@ -40,7 +40,7 @@ end neorv32_cpu_frontend;
 architecture neorv32_cpu_frontend_rtl of neorv32_cpu_frontend is
 
   -- instruction fetch engine --
-  type state_t is (S_RESTART, S_REQUEST, S_PENDING, S_DOWNLOADING, S_DELAY);
+  type state_t is (S_RESTART, S_REQUEST, S_PENDING, S_DOWNLOADING);
   type fetch_t is record
     state   : state_t;
     restart : std_ulogic; -- buffered restart request (after branch)
@@ -56,6 +56,7 @@ architecture neorv32_cpu_frontend_rtl of neorv32_cpu_frontend is
     wdata, rdata : ipb_data_t;
     we,    re    : std_ulogic_vector(1 downto 0);
     free,  avail : std_ulogic_vector(1 downto 0);
+    level        : std_ulogic_vector(31 downto 0);
   end record;
   signal ipb : ipb_t;
 
@@ -64,7 +65,7 @@ architecture neorv32_cpu_frontend_rtl of neorv32_cpu_frontend is
   signal ipb_ack : std_ulogic_vector(1 downto 0);
   signal cmd16 : std_ulogic_vector(15 downto 0);
   signal cmd32 : std_ulogic_vector(31 downto 0);
-
+  
 begin
 
   -- ******************************************************************************************************************
@@ -114,7 +115,7 @@ begin
           fetch_nxt.state  <= S_RESTART;
         elsif (ipb.free = "11") then -- free IPB space?
           fetch_nxt.state  <= S_PENDING;
-	  ibus_req_o.stb   <= '1';
+	        ibus_req_o.stb   <= '1';
           ibus_req_o.lock  <= '1'; -- this is a locked transfer
           ibus_req_o.burst <= '1'; -- this is a burst transfer
         end if;
@@ -129,8 +130,10 @@ begin
             fetch_nxt.pc(1) <= '0'; -- (re-)align to 32-bit
             if (fetch.restart = '1') or (ctrl_i.if_reset = '1') then -- restart request due to branch
               fetch_nxt.state <= S_RESTART;
-            else -- request next linear instruction word
+            elsif (ipb.free = "11") then -- request next linear instruction word
               fetch_nxt.state <= S_DOWNLOADING;
+            else
+              fetch_nxt.state <= S_REQUEST;
             end if;
           end if;
 
@@ -142,19 +145,17 @@ begin
           if (fetch.restart = '1') or (ctrl_i.if_reset = '1') then -- restart request due to branch
             fetch_nxt.state <= S_RESTART;
           elsif (ipb.free = "11") then -- request next linear instruction word
-            ibus_req_o.stb  <= '1'; -- request next transfer
             fetch_nxt.state <= S_DOWNLOADING;
+            ibus_req_o.stb  <= '1'; -- request next transfer
           else
-            fetch_nxt.state <= S_DELAY;
+            fetch_nxt.state <= S_REQUEST;
           end if;
 
           if (ibus_rsp_i.ack = '1') then -- free IPB space?
-            fetch_nxt.pc       <= std_ulogic_vector(unsigned(fetch.pc) + 4); -- next word  
+            fetch_nxt.pc      <= std_ulogic_vector(unsigned(fetch.pc) + 4); -- next word
+
           end if;
-	when S_DELAY =>
-	-- ------------------------------------------------------------
-	fetch_nxt.state <= S_REQUEST;
-		  
+
       when others => -- S_RESTART: set new start address
       -- ------------------------------------------------------------
         fetch_nxt.restart <= '0'; -- restart done
