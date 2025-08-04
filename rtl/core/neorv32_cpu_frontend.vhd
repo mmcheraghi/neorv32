@@ -117,85 +117,85 @@ begin
 
       when S_REQUEST => -- request next 32-bit-aligned instruction word
       -- ------------------------------------------------------------
-	fetch_nxt.burst_timeout  <= (others => '0');
+	fetch_nxt.burst_timeout    <= (others => '0');
 
         if (fetch.restart = '1') or (ctrl_i.if_reset = '1') then -- restart because of branch
-          fetch_nxt.state  <= S_RESTART;
+          fetch_nxt.state          <= S_RESTART;
         elsif (ipb.free = "11") then -- free IPB space?
-          fetch_nxt.state  <= S_PENDING;
-	  ibus_req_o.stb   <= '1';
-          ibus_req_o.lock  <= '1'; -- this is a locked transfer
-          ibus_req_o.burst <= '1'; -- this is a burst transfer
+          fetch_nxt.state          <= S_PENDING;
+	  ibus_req_o.stb           <= '1';
+          ibus_req_o.lock          <= '1'; -- this is a locked transfer
         end if;
 
         when S_PENDING => -- wait for bus response and write instruction data to prefetch buffer
         -- ------------------------------------------------------------
           fetch_nxt.burst_timeout  <= (others => '0');
+	  ibus_req_o.lock          <= '1';
 
           if (ibus_rsp_i.ack = '1') then -- wait for bus response
             fetch_nxt.pc           <= std_ulogic_vector(unsigned(fetch.pc) + 4); -- next word
             fetch_nxt.pc(1) 	   <= '0'; -- (re-)align to 32-bit
-            fetch_nxt.roll_back_pc <= fetch.pc;
+            fetch_nxt.roll_back_pc <= fetch_nxt.pc;
             if (fetch.restart = '1') or (ctrl_i.if_reset = '1') then -- restart request due to branch
-              fetch_nxt.state <= S_RESTART;
+              fetch_nxt.state      <= S_RESTART;
             elsif ((unsigned(ipb.level(0)) < FIFO_DEPTH-1) and 
                    (unsigned(ipb.level(1)) < FIFO_DEPTH-1)) then -- request next linear instruction word
-              fetch_nxt.state <= S_DOWNLOADING;
-              ibus_req_o.lock  <= '1'; -- this is a locked transfer
-              ibus_req_o.burst <= '1'; -- this is a burst transfer
+              fetch_nxt.state      <= S_DOWNLOADING;
+              ibus_req_o.lock      <= '1'; -- this is a locked transfer
+              ibus_req_o.burst     <= '1'; -- this is a burst transfer
             else
-              fetch_nxt.state <= S_REQUEST;
+              fetch_nxt.state      <= S_REQUEST;
             end if;
           end if;
 
         when S_DOWNLOADING =>
         -- ------------------------------------------------------------
-          ibus_req_o.lock  <= '1'; -- this is a locked transfer
-          ibus_req_o.burst <= '1'; -- this is a burst transfer
-	  fetch_nxt.burst_timeout <= fetch.burst_timeout(0) & '1';
+          ibus_req_o.lock          <= '1'; -- this is a locked transfer
+          ibus_req_o.burst         <= '1'; -- this is a burst transfer
+	  fetch_nxt.burst_timeout  <= fetch.burst_timeout(0) & '1';
 
           if ((unsigned(ipb.level(0)) < FIFO_DEPTH-1) and 
               (unsigned(ipb.level(1)) < FIFO_DEPTH-1) and
               (fetch.burst_timeout(1) = '0')) then -- request next linear instruction word
-            ibus_req_o.stb  <= '1';
-            fetch_nxt.pc    <= std_ulogic_vector(unsigned(fetch.pc) + 4); -- next word
+            ibus_req_o.stb         <= '1';
+            fetch_nxt.pc           <= std_ulogic_vector(unsigned(fetch.pc) + 4); -- next word
           end if;
 
           if ((fetch_nxt.burst_timeout = "11") and
               (fetch.burst_timeout     = "01")) then
-            fetch_nxt.pc    <= fetch.roll_back_pc; -- next word
+            fetch_nxt.pc           <= fetch.roll_back_pc; -- next word
           end if;
 
           if (ibus_rsp_i.ack = '1') then -- free IPB space?
 
             fetch_nxt.burst_timeout <= (others => '0');
-            ibus_req_o.stb    <= '1';
+            ibus_req_o.stb         <= '1';
             fetch_nxt.roll_back_pc <= fetch.pc;
 
             if (fetch.restart = '1') or (ctrl_i.if_reset = '1') then -- restart request due to branch
-              fetch_nxt.state <= S_RESTART;
-              ibus_req_o.stb  <= '0';
-              ibus_req_o.lock  <= '0';
-              ibus_req_o.burst <= '0';
+              fetch_nxt.state      <= S_RESTART;
+              ibus_req_o.stb       <= '0';
+              ibus_req_o.lock      <= '0';
+              ibus_req_o.burst     <= '0';
             elsif ((unsigned(ipb.level(0)) < FIFO_DEPTH-1) and 
                    (unsigned(ipb.level(1)) < FIFO_DEPTH-1)) then -- request next linear instruction word
-              fetch_nxt.state <= S_DOWNLOADING;     
-              fetch_nxt.pc    <= std_ulogic_vector(unsigned(fetch.pc) + 4); -- next word         
+              fetch_nxt.state      <= S_DOWNLOADING;     
+              fetch_nxt.pc         <= std_ulogic_vector(unsigned(fetch.pc) + 4); -- next word         
             else
-              fetch_nxt.state <= S_REQUEST;
-              ibus_req_o.stb  <= '0';
-              ibus_req_o.lock  <= '0';
-              ibus_req_o.burst <= '0';
+              fetch_nxt.state      <= S_REQUEST;
+              ibus_req_o.stb       <= '0';
+              ibus_req_o.lock      <= '0';
+              ibus_req_o.burst     <= '0';
             end if;
           end if;
 
       when others => -- S_RESTART: set new start address
       -- ------------------------------------------------------------
-        fetch_nxt.burst_timeout  <= (others => '0');
-        fetch_nxt.restart <= '0'; -- restart done
-        fetch_nxt.pc      <= ctrl_i.pc_nxt; -- initialize from PC
-        fetch_nxt.priv    <= ctrl_i.cpu_priv; -- set new privilege level
-        fetch_nxt.state   <= S_REQUEST;
+        fetch_nxt.burst_timeout    <= (others => '0');
+        fetch_nxt.restart          <= '0'; -- restart done
+        fetch_nxt.pc               <= ctrl_i.pc_nxt; -- initialize from PC
+        fetch_nxt.priv             <= ctrl_i.cpu_priv; -- set new privilege level
+        fetch_nxt.state            <= S_REQUEST;
 
     end case;
   end process fetch_fsm_comb;
