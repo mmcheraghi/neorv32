@@ -113,7 +113,6 @@ begin
 
       when S_REQUEST => -- request next 32-bit-aligned instruction word
       -- ------------------------------------------------------------
-	fetch_nxt.burst_timeout    <= (others => '0');
 
         if (fetch.restart = '1') or (ctrl_i.if_reset = '1') then -- restart because of branch
           fetch_nxt.state          <= S_RESTART;
