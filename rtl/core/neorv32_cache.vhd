@@ -111,6 +111,7 @@ architecture neorv32_cache_rtl of neorv32_cache is
     idx      : std_ulogic_vector(index_size_c-1 downto 0); -- index
     ofs_int  : std_ulogic_vector(offset_size_c-1 downto 0); -- cache address offset
     ofs_ext  : std_ulogic_vector(offset_size_c downto 0); -- bus address offset
+    addr     : std_ulogic_vector(31 downto 0); -- access address
   end record;
   signal ctrl, ctrl_nxt : ctrl_t;
 
@@ -131,6 +132,7 @@ begin
       ctrl.idx      <= (others => '0');
       ctrl.ofs_int  <= (others => '0');
       ctrl.ofs_ext  <= (others => '0');
+      ctrl.addr     <= (others => '0');
     elsif rising_edge(clk_i) then
       ctrl <= ctrl_nxt;
     end if;
@@ -139,7 +141,7 @@ begin
 
   -- Control Engine FSM Comb ----------------------------------------------------------------
   -- -------------------------------------------------------------------------------------------
-  ctrl_engine_comb: process(ctrl, host_req_i, cache_i, bus_rsp_i)
+  ctrl_engine_comb: process(ctrl, ctrl_nxt, host_req_i, cache_i, bus_rsp_i)
   begin
     -- control engine defaults --
     ctrl_nxt.state    <= ctrl.state;
@@ -151,12 +153,13 @@ begin
     ctrl_nxt.idx      <= ctrl.idx;
     ctrl_nxt.ofs_int  <= ctrl.ofs_int;
     ctrl_nxt.ofs_ext  <= ctrl.ofs_ext;
+    ctrl_nxt.addr     <= ctrl.addr;
 
     -- cache access defaults --
     cache_o.cmd_clr <= '0';
     cache_o.cmd_inv <= '0';
     cache_o.cmd_new <= '0';
-    cache_o.addr    <= host_req_i.addr;
+    cache_o.addr    <= ctrl_nxt.addr;
     cache_o.we      <= (others => '0');
     cache_o.data    <= host_req_i.data;
 
@@ -184,12 +187,13 @@ begin
             ctrl_nxt.buf_dir <= '1';
           end if;
           ctrl_nxt.state <= S_CHECK;
+          ctrl_nxt.addr  <= host_req_i.addr;
         end if;
 
       when S_CHECK => -- check access request
       -- ------------------------------------------------------------
-        ctrl_nxt.tag     <= host_req_i.addr(31 downto 32-tag_size_c);
-        ctrl_nxt.idx     <= host_req_i.addr((offset_size_c+2+index_size_c)-1 downto offset_size_c+2);
+        ctrl_nxt.tag     <= ctrl.addr(31 downto 32-tag_size_c);
+        ctrl_nxt.idx     <= ctrl.addr((offset_size_c+2+index_size_c)-1 downto offset_size_c+2);
         ctrl_nxt.ofs_ext <= (others => '0');
         ctrl_nxt.ofs_int <= (others => '0');
         ctrl_nxt.buf_req <= '0'; -- access about to be completed
@@ -204,6 +208,7 @@ begin
             ctrl_nxt.state <= S_IDLE;
             if ((host_req_i.lock = '1') and (host_req_i.burst = '1') and (host_req_i.stb = '1')) then
               ctrl_nxt.state <= S_CHECK;
+              ctrl_nxt.addr  <= host_req_i.addr;
             end if;
           elsif (WRITE_THROUGH = true) then -- write-through: write to main memory and also to the cache
             cache_o.we     <= host_req_i.ben;
