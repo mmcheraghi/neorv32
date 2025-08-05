@@ -41,14 +41,12 @@ end neorv32_cpu_frontend;
 architecture neorv32_cpu_frontend_rtl of neorv32_cpu_frontend is
 
   -- instruction fetch engine --
-  type state_t is (S_RESTART, S_REQUEST, S_PENDING, S_DOWNLOADING);
+  type state_t is (S_RESTART, S_REQUEST, S_PENDING);
   type fetch_t is record
     state   : state_t;
     restart : std_ulogic; -- buffered restart request (after branch)
     pc      : std_ulogic_vector(XLEN-1 downto 0);
     priv    : std_ulogic; -- fetch privilege level
-    roll_back_pc  : std_ulogic_vector(XLEN-1 downto 0); -- the last pc waiting for bus access response 
-    burst_timeout : std_ulogic_vector(1 downto 0); -- a shift register acting as burst timeout counter
   end record;
   signal fetch 		: fetch_t;
   signal fetch_nxt 	: fetch_t;
@@ -85,8 +83,6 @@ begin
       fetch.restart <= '1'; -- reset IPB and issue engine
       fetch.pc      <= (others => '0');
       fetch.priv    <= priv_mode_m_c;
-      fetch.roll_back_pc   <= (others => '0');
-      fetch.burst_timeout  <= (others => '0');
     elsif rising_edge(clk_i) then
       fetch <= fetch_nxt;
     end if;
@@ -123,75 +119,39 @@ begin
           fetch_nxt.state          <= S_RESTART;
         elsif (ipb.free = "11") then -- free IPB space?
           fetch_nxt.state          <= S_PENDING;
-	  ibus_req_o.stb           <= '1';
-          ibus_req_o.lock          <= '1'; -- this is a locked transfer
+	  ibus_req_o.burst         <= '1';
+          ibus_req_o.lock          <= '1';
+          ibus_req_o.stb           <= '1';
+	  fetch_nxt.pc             <= std_ulogic_vector(unsigned(fetch.pc) + 4); -- next word
         end if;
 
         when S_PENDING => -- wait for bus response and write instruction data to prefetch buffer
         -- ------------------------------------------------------------
-          fetch_nxt.burst_timeout  <= (others => '0');
-	  ibus_req_o.lock          <= '1';
+          ibus_req_o.burst         <= '1';
+          ibus_req_o.lock          <= '1';
 
           if (ibus_rsp_i.ack = '1') then -- wait for bus response
-            fetch_nxt.pc           <= std_ulogic_vector(unsigned(fetch.pc) + 4); -- next word
-            fetch_nxt.pc(1) 	   <= '0'; -- (re-)align to 32-bit
-            fetch_nxt.roll_back_pc <= fetch_nxt.pc;
+            fetch_nxt.pc(1) 	     <= '0'; -- (re-)align to 32-bit
             if (fetch.restart = '1') or (ctrl_i.if_reset = '1') then -- restart request due to branch
               fetch_nxt.state      <= S_RESTART;
+              ibus_req_o.burst         <= '0';
+              ibus_req_o.lock          <= '0';
+              ibus_req_o.stb           <= '0';
             elsif ((unsigned(ipb.level(0)) < FIFO_DEPTH-1) and 
                    (unsigned(ipb.level(1)) < FIFO_DEPTH-1)) then -- request next linear instruction word
-              fetch_nxt.state      <= S_DOWNLOADING;
-              ibus_req_o.lock      <= '1'; -- this is a locked transfer
-              ibus_req_o.burst     <= '1'; -- this is a burst transfer
+              ibus_req_o.stb           <= '1';
+              fetch_nxt.pc             <= std_ulogic_vector(unsigned(fetch.pc) + 4); -- next word
+              fetch_nxt.state          <= S_PENDING;
             else
-              fetch_nxt.state      <= S_REQUEST;
-            end if;
-          end if;
-
-        when S_DOWNLOADING =>
-        -- ------------------------------------------------------------
-          ibus_req_o.lock          <= '1'; -- this is a locked transfer
-          ibus_req_o.burst         <= '1'; -- this is a burst transfer
-	  fetch_nxt.burst_timeout  <= fetch.burst_timeout(0) & '1';
-
-          if ((unsigned(ipb.level(0)) < FIFO_DEPTH-1) and 
-              (unsigned(ipb.level(1)) < FIFO_DEPTH-1) and
-              (fetch.burst_timeout(1) = '0')) then -- request next linear instruction word
-            ibus_req_o.stb         <= '1';
-            fetch_nxt.pc           <= std_ulogic_vector(unsigned(fetch.pc) + 4); -- next word
-          end if;
-
-          if ((fetch_nxt.burst_timeout = "11") and
-              (fetch.burst_timeout     = "01")) then
-            fetch_nxt.pc           <= fetch.roll_back_pc; -- next word
-          end if;
-
-          if (ibus_rsp_i.ack = '1') then -- free IPB space?
-
-            fetch_nxt.burst_timeout <= (others => '0');
-            ibus_req_o.stb         <= '1';
-            fetch_nxt.roll_back_pc <= fetch.pc;
-
-            if (fetch.restart = '1') or (ctrl_i.if_reset = '1') then -- restart request due to branch
-              fetch_nxt.state      <= S_RESTART;
-              ibus_req_o.stb       <= '0';
-              ibus_req_o.lock      <= '0';
-              ibus_req_o.burst     <= '0';
-            elsif ((unsigned(ipb.level(0)) < FIFO_DEPTH-1) and 
-                   (unsigned(ipb.level(1)) < FIFO_DEPTH-1)) then -- request next linear instruction word
-              fetch_nxt.state      <= S_DOWNLOADING;     
-              fetch_nxt.pc         <= std_ulogic_vector(unsigned(fetch.pc) + 4); -- next word         
-            else
-              fetch_nxt.state      <= S_REQUEST;
-              ibus_req_o.stb       <= '0';
-              ibus_req_o.lock      <= '0';
-              ibus_req_o.burst     <= '0';
+              fetch_nxt.state          <= S_REQUEST;
+              ibus_req_o.burst         <= '0';
+              ibus_req_o.lock          <= '0';
+              ibus_req_o.stb           <= '0';
             end if;
           end if;
 
       when others => -- S_RESTART: set new start address
       -- ------------------------------------------------------------
-        fetch_nxt.burst_timeout    <= (others => '0');
         fetch_nxt.restart          <= '0'; -- restart done
         fetch_nxt.pc               <= ctrl_i.pc_nxt; -- initialize from PC
         fetch_nxt.priv             <= ctrl_i.cpu_priv; -- set new privilege level
@@ -205,17 +165,8 @@ begin
   ipb.wdata(1) <= ibus_rsp_i.err & ibus_rsp_i.data(31 downto 16);
 
   -- IPB write enable --
-  ipb.we(0) <= '1' when ((fetch.state = S_PENDING) or 
-                         (fetch.state = S_DOWNLOADING)) and 
-                         (ibus_rsp_i.ack = '1') and
-                         (fetch.burst_timeout(1) = '0') and
-                         ((fetch.pc(1) = '0') or (not RISCV_C)) else '0';
-
-  ipb.we(1) <= '1' when ((fetch.state = S_PENDING) or 
-                         (fetch.state = S_DOWNLOADING)) and 
-                         (ibus_rsp_i.ack = '1') and
-                         (fetch.burst_timeout(1) = '0') else '0';
-
+  ipb.we(0) <= '1' when (fetch.state = S_PENDING) and (ibus_rsp_i.ack = '1') and ((fetch.pc(1) = '0') or (not RISCV_C)) else '0';
+  ipb.we(1) <= '1' when (fetch.state = S_PENDING) and (ibus_rsp_i.ack = '1') else '0';
 
   -- Instruction Prefetch Buffer (FIFO) -----------------------------------------------------
   -- -------------------------------------------------------------------------------------------
