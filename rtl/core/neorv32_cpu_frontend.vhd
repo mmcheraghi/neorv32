@@ -122,6 +122,7 @@ begin
           ibus_req_o.lock          <= '1';
           ibus_req_o.stb           <= '1';
 	  fetch_nxt.pc             <= std_ulogic_vector(unsigned(fetch.pc) + 4); -- next word
+          fetch_nxt.pc(1) 	   <= '0'; -- (re-)align to 32-bit
         end if;
 
         when S_PENDING => -- wait for bus response and write instruction data to prefetch buffer
@@ -130,7 +131,6 @@ begin
           ibus_req_o.lock          <= '1';
 
           if (ibus_rsp_i.ack = '1') then -- wait for bus response
-            fetch_nxt.pc(1) 	     <= '0'; -- (re-)align to 32-bit
             if (fetch.restart = '1') or (ctrl_i.if_reset = '1') then -- restart request due to branch
               fetch_nxt.state      <= S_RESTART;
               ibus_req_o.burst         <= '0';
