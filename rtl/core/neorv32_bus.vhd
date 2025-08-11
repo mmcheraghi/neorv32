@@ -79,11 +79,23 @@ begin
     sel        <= '0';
     stb        <= '0';
 
+    -- Response Switch ------------------------------------------------------------------------
+    -- -------------------------------------------------------------------------------------------
+    a_rsp_o.data <= x_rsp_i.data;
+    a_rsp_o.ack  <= '0';
+    a_rsp_o.err  <= '0';
+  
+    b_rsp_o.data <= x_rsp_i.data;
+    b_rsp_o.ack  <= '0';
+    b_rsp_o.err  <= '0';
+
     -- state machine --
     case state is
 
       when S_BUSY_A => -- port A access in progress
       -- ------------------------------------------------------------
+        a_rsp_o.ack  <= x_rsp_i.ack;
+        a_rsp_o.err  <= x_rsp_i.err;
         sel <= '0';
         if (locked(0) = '1') then -- port A has exclusive access until the lock is released
           stb <= a_req_i.stb; -- allow further transfer requests from port A
@@ -96,6 +108,8 @@ begin
 
       when S_BUSY_B => -- port B access in progress
       -- ------------------------------------------------------------
+        b_rsp_o.ack  <= x_rsp_i.ack;
+        b_rsp_o.err  <= x_rsp_i.err;
         sel <= '1';
         if (locked(1) = '1') then -- port B has exclusive access until the lock is released
           stb <= b_req_i.stb; -- allow further transfer requests from port B
@@ -152,17 +166,6 @@ begin
   x_req_o.lock  <= a_req_i.lock  when (sel = '0') else b_req_i.lock;
   x_req_o.fence <= a_req_i.fence or b_req_i.fence;
   x_req_o.stb   <= stb;
-
-
-  -- Response Switch ------------------------------------------------------------------------
-  -- -------------------------------------------------------------------------------------------
-  a_rsp_o.data <= x_rsp_i.data;
-  a_rsp_o.ack  <= x_rsp_i.ack when (sel = '0') else '0';
-  a_rsp_o.err  <= x_rsp_i.err when (sel = '0') else '0';
-
-  b_rsp_o.data <= x_rsp_i.data;
-  b_rsp_o.ack  <= x_rsp_i.ack when (sel = '1') else '0';
-  b_rsp_o.err  <= x_rsp_i.err when (sel = '1') else '0';
 
 
 end neorv32_bus_switch_rtl;
