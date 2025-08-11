@@ -153,7 +153,11 @@ begin
     ctrl_nxt.idx      <= ctrl.idx;
     ctrl_nxt.ofs_int  <= ctrl.ofs_int;
     ctrl_nxt.ofs_ext  <= ctrl.ofs_ext;
-    ctrl_nxt.addr     <= ctrl.addr;
+    if (host_req_i.stb = '1') then
+      ctrl_nxt.addr   <= host_req_i.addr;
+    else
+      ctrl_nxt.addr   <= ctrl.addr;
+    end if;
 
     -- cache access defaults --
     cache_o.cmd_clr <= '0';
@@ -187,7 +191,6 @@ begin
             ctrl_nxt.buf_dir <= '1';
           end if;
           ctrl_nxt.state <= S_CHECK;
-          ctrl_nxt.addr  <= host_req_i.addr;
         end if;
 
       when S_CHECK => -- check access request
@@ -208,7 +211,6 @@ begin
             ctrl_nxt.state <= S_IDLE;
             if ((host_req_i.lock = '1') and (host_req_i.burst = '1') and (host_req_i.stb = '1')) then
               ctrl_nxt.state <= S_CHECK;
-              ctrl_nxt.addr  <= host_req_i.addr;
             end if;
           elsif (WRITE_THROUGH = true) then -- write-through: write to main memory and also to the cache
             cache_o.we     <= host_req_i.ben;
