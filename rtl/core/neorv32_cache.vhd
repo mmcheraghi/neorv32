@@ -112,6 +112,7 @@ architecture neorv32_cache_rtl of neorv32_cache is
     ofs_int  : std_ulogic_vector(offset_size_c-1 downto 0); -- cache address offset
     ofs_ext  : std_ulogic_vector(offset_size_c downto 0); -- bus address offset
     addr     : std_ulogic_vector(31 downto 0); -- access address
+    data     : std_ulogic_vector(31 downto 0); -- data to be written that is determined during stb high
   end record;
   signal ctrl, ctrl_nxt : ctrl_t;
 
@@ -133,6 +134,7 @@ begin
       ctrl.ofs_int  <= (others => '0');
       ctrl.ofs_ext  <= (others => '0');
       ctrl.addr     <= (others => '0');
+      ctrl.data     <= (others => '0');
     elsif rising_edge(clk_i) then
       ctrl <= ctrl_nxt;
     end if;
@@ -155,8 +157,10 @@ begin
     ctrl_nxt.ofs_ext  <= ctrl.ofs_ext;
     if (host_req_i.stb = '1') then
       ctrl_nxt.addr   <= host_req_i.addr;
+      ctrl_nxt.data   <= host_req_i.data;
     else
       ctrl_nxt.addr   <= ctrl.addr;
+      ctrl_nxt.data   <= ctrl.data;
     end if;
 
     -- cache access defaults --
@@ -165,7 +169,7 @@ begin
     cache_o.cmd_new <= '0';
     cache_o.addr    <= ctrl_nxt.addr;
     cache_o.we      <= (others => '0');
-    cache_o.data    <= host_req_i.data;
+    cache_o.data    <= ctrl_nxt.data;
 
     -- host response defaults --
     host_rsp_o.ack  <= '0';
