@@ -62,8 +62,6 @@ void vectored_global_handler(void);
 void vectored_mei_handler(void);
 void hw_breakpoint_handler(void);
 void gpio_trap_handler(void);
-void double_trap0_handler(void);
-void double_trap1_handler(void);
 void test_ok(void);
 void test_fail(void);
 int  core1_main(void);
@@ -146,7 +144,6 @@ int main() {
   // -----------------------------------------------
   neorv32_rte_setup(); // this will install a full-detailed debug handler for ALL traps
   int install_err = 0;
-  // synchronous exceptions
   install_err += neorv32_rte_handler_install(TRAP_CODE_I_MISALIGNED, global_trap_handler);
   install_err += neorv32_rte_handler_install(TRAP_CODE_I_ACCESS,     global_trap_handler);
   install_err += neorv32_rte_handler_install(TRAP_CODE_I_ILLEGAL,    global_trap_handler);
@@ -157,27 +154,25 @@ int main() {
   install_err += neorv32_rte_handler_install(TRAP_CODE_S_ACCESS,     global_trap_handler);
   install_err += neorv32_rte_handler_install(TRAP_CODE_UENV_CALL,    global_trap_handler);
   install_err += neorv32_rte_handler_install(TRAP_CODE_MENV_CALL,    global_trap_handler);
-  install_err += neorv32_rte_handler_install(TRAP_CODE_DOUBLE_TRAP,  global_trap_handler);
-  // asynchronous exceptions (interrupts)
-  install_err += neorv32_rte_handler_install(TRAP_CODE_MSI,     global_trap_handler);
-  install_err += neorv32_rte_handler_install(TRAP_CODE_MTI,     global_trap_handler);
-  install_err += neorv32_rte_handler_install(TRAP_CODE_MEI,     global_trap_handler);
-  install_err += neorv32_rte_handler_install(TRAP_CODE_FIRQ_0,  global_trap_handler);
-  install_err += neorv32_rte_handler_install(TRAP_CODE_FIRQ_1,  global_trap_handler);
-  install_err += neorv32_rte_handler_install(TRAP_CODE_FIRQ_2,  global_trap_handler);
-  install_err += neorv32_rte_handler_install(TRAP_CODE_FIRQ_3,  global_trap_handler);
-  install_err += neorv32_rte_handler_install(TRAP_CODE_FIRQ_4,  global_trap_handler);
-  install_err += neorv32_rte_handler_install(TRAP_CODE_FIRQ_5,  global_trap_handler);
-  install_err += neorv32_rte_handler_install(TRAP_CODE_FIRQ_6,  global_trap_handler);
-  install_err += neorv32_rte_handler_install(TRAP_CODE_FIRQ_7,  global_trap_handler);
-  install_err += neorv32_rte_handler_install(TRAP_CODE_FIRQ_8,  global_trap_handler);
-  install_err += neorv32_rte_handler_install(TRAP_CODE_FIRQ_9,  global_trap_handler);
-  install_err += neorv32_rte_handler_install(TRAP_CODE_FIRQ_10, global_trap_handler);
-  install_err += neorv32_rte_handler_install(TRAP_CODE_FIRQ_11, global_trap_handler);
-  install_err += neorv32_rte_handler_install(TRAP_CODE_FIRQ_12, global_trap_handler);
-  install_err += neorv32_rte_handler_install(TRAP_CODE_FIRQ_13, global_trap_handler);
-  install_err += neorv32_rte_handler_install(TRAP_CODE_FIRQ_14, global_trap_handler);
-  install_err += neorv32_rte_handler_install(TRAP_CODE_FIRQ_15, global_trap_handler);
+  install_err += neorv32_rte_handler_install(TRAP_CODE_MSI,          global_trap_handler);
+  install_err += neorv32_rte_handler_install(TRAP_CODE_MTI,          global_trap_handler);
+  install_err += neorv32_rte_handler_install(TRAP_CODE_MEI,          global_trap_handler);
+  install_err += neorv32_rte_handler_install(TRAP_CODE_FIRQ_0,       global_trap_handler);
+  install_err += neorv32_rte_handler_install(TRAP_CODE_FIRQ_1,       global_trap_handler);
+  install_err += neorv32_rte_handler_install(TRAP_CODE_FIRQ_2,       global_trap_handler);
+  install_err += neorv32_rte_handler_install(TRAP_CODE_FIRQ_3,       global_trap_handler);
+  install_err += neorv32_rte_handler_install(TRAP_CODE_FIRQ_4,       global_trap_handler);
+  install_err += neorv32_rte_handler_install(TRAP_CODE_FIRQ_5,       global_trap_handler);
+  install_err += neorv32_rte_handler_install(TRAP_CODE_FIRQ_6,       global_trap_handler);
+  install_err += neorv32_rte_handler_install(TRAP_CODE_FIRQ_7,       global_trap_handler);
+  install_err += neorv32_rte_handler_install(TRAP_CODE_FIRQ_8,       global_trap_handler);
+  install_err += neorv32_rte_handler_install(TRAP_CODE_FIRQ_9,       global_trap_handler);
+  install_err += neorv32_rte_handler_install(TRAP_CODE_FIRQ_10,      global_trap_handler);
+  install_err += neorv32_rte_handler_install(TRAP_CODE_FIRQ_11,      global_trap_handler);
+  install_err += neorv32_rte_handler_install(TRAP_CODE_FIRQ_12,      global_trap_handler);
+  install_err += neorv32_rte_handler_install(TRAP_CODE_FIRQ_13,      global_trap_handler);
+  install_err += neorv32_rte_handler_install(TRAP_CODE_FIRQ_14,      global_trap_handler);
+  install_err += neorv32_rte_handler_install(TRAP_CODE_FIRQ_15,      global_trap_handler);
   if (install_err) {
     PRINT_CRITICAL("RTE fail!\n");
     return 1;
@@ -478,7 +473,7 @@ int main() {
   // ----------------------------------------------------------
   PRINT_STANDARD("[%i] Ext. memory (@0x%x) ", cnt_test, (uint32_t)EXT_MEM_BASE);
 
-  if ((NEORV32_SYSINFO->SOC & (1 << SYSINFO_SOC_XBUS)) && (neorv32_cpu_csr_read(CSR_MXISA) & (1 << CSR_MXISA_IS_SIM))) {
+  if ((NEORV32_SYSINFO->SOC & (1 << SYSINFO_SOC_XBUS)) && (neorv32_cpu_csr_read(CSR_MXCSR) & (1 << CSR_MXCSR_ISSIM))) {
     trap_cause = trap_never_c;
     cnt_test++;
 
@@ -596,7 +591,7 @@ int main() {
   // ----------------------------------------------------------
   PRINT_STANDARD("[%i] IF access EXC ", cnt_test);
 
-  if (neorv32_cpu_csr_read(CSR_MXISA) & (1 << CSR_MXISA_IS_SIM)) {
+  if (neorv32_cpu_csr_read(CSR_MXCSR) & (1 << CSR_MXCSR_ISSIM)) {
     trap_cause = trap_never_c;
     cnt_test++;
 
@@ -687,7 +682,7 @@ int main() {
   PRINT_STANDARD("[%i] BREAK EXC ", cnt_test);
 
   // skip on real hardware since ebreak will make problems when running this test program via gdb
-  if (neorv32_cpu_csr_read(CSR_MXISA) & (1 << CSR_MXISA_IS_SIM)) {
+  if (neorv32_cpu_csr_read(CSR_MXCSR) & (1 << CSR_MXCSR_ISSIM)) {
     trap_cause = trap_never_c;
     cnt_test++;
 
@@ -845,34 +840,6 @@ int main() {
 
 
   // ----------------------------------------------------------
-  // Double-trap exception
-  // ----------------------------------------------------------
-  PRINT_STANDARD("[%i] Double-trap EXC ", cnt_test);
-  cnt_test++;
-
-  // install double-trap exception "cascade" handlers
-  neorv32_rte_handler_install(TRAP_CODE_MENV_CALL,   double_trap0_handler);
-  neorv32_rte_handler_install(TRAP_CODE_DOUBLE_TRAP, double_trap1_handler);
-
-  // trigger first exception (-> double_trap0_handler)
-  asm volatile ("ecall");
-
-  // restore original handlers
-  neorv32_rte_handler_install(TRAP_CODE_MENV_CALL,   global_trap_handler);
-  neorv32_rte_handler_install(TRAP_CODE_DOUBLE_TRAP, global_trap_handler);
-
-  // re-enable machine-mode interrupts (MIE and MPIE were cleared by calling the two handlers)
-  neorv32_cpu_csr_set(CSR_MSTATUS, 1 << CSR_MSTATUS_MIE);
-
-  if (neorv32_cpu_csr_read(CSR_MCAUSE) == TRAP_CODE_DOUBLE_TRAP) {
-    test_ok();
-  }
-  else {
-    test_fail();
-  }
-
-
-  // ----------------------------------------------------------
   // CLINT machine time interrupt
   // ----------------------------------------------------------
   PRINT_STANDARD("[%i] CLINT.MTI ", cnt_test);
@@ -893,9 +860,7 @@ int main() {
 
     neorv32_cpu_csr_write(CSR_MIE, 0);
 
-    if ((trap_cause == TRAP_CODE_MTI) &&
-        (neorv32_cpu_csr_read(CSR_MTVAL)  == 0) && // has to be zero for interrupts
-        (neorv32_cpu_csr_read(CSR_MTINST) == 0)) { // has to be zero for interrupts
+    if ((trap_cause == TRAP_CODE_MTI) && (neorv32_cpu_csr_read(CSR_MTVAL)  == 0)) {
       test_ok();
     }
     else {
@@ -949,7 +914,7 @@ int main() {
   // ----------------------------------------------------------
   PRINT_STANDARD("[%i] MEI (sim) IRQ ", cnt_test);
 
-  if (neorv32_cpu_csr_read(CSR_MXISA) & (1 << CSR_MXISA_IS_SIM)) {
+  if (neorv32_cpu_csr_read(CSR_MXCSR) & (1 << CSR_MXCSR_ISSIM)) {
     trap_cause = trap_never_c;
     cnt_test++;
 
@@ -1054,7 +1019,7 @@ int main() {
   // ----------------------------------------------------------
   PRINT_STANDARD("[%i] Vectored IRQ (sim) ", cnt_test);
 
-  if (neorv32_cpu_csr_read(CSR_MXISA) & (1 << CSR_MXISA_IS_SIM)) {
+  if (neorv32_cpu_csr_read(CSR_MXCSR) & (1 << CSR_MXCSR_ISSIM)) {
     trap_cause = trap_never_c;
     cnt_test++;
 
@@ -2312,7 +2277,14 @@ void global_trap_handler(void) {
   // hack: make "instruction access fault" exception resumable as we *exactly* know how to handle it in this case
   // -> as this is triggered by a JAL instruction we return to calling program at [context.ra]
   if (trap_cause == TRAP_CODE_I_ACCESS) {
-    neorv32_cpu_csr_write(CSR_MEPC, neorv32_rte_context_get(1)); // x1 = ra = return address
+    uint32_t return_addr = neorv32_rte_context_get(1); // x1 = ra = return address
+    if ((neorv32_cpu_csr_read(CSR_MTINST) & 3) != 3) {
+      return_addr -= 2;
+    }
+    else {
+      return_addr -= 4;
+    }
+    neorv32_cpu_csr_write(CSR_MEPC, return_addr);
   }
 
   // hack: always come back in MACHINE MODE
@@ -2409,36 +2381,6 @@ void gpio_trap_handler(void) {
   gpio_trap_handler_ack = neorv32_gpio_irq_get(); // get currently pending pin interrupts
   neorv32_gpio_irq_clr(gpio_trap_handler_ack); // clear currently pending pin interrupts
   neorv32_gpio_irq_disable(-1); // disable all input pin interrupts
-}
-
-
-/**********************************************************************//**
- * Double trap handler 0: Triggered by ecall
- **************************************************************************/
-void double_trap0_handler(void) {
-
-  // backup the original stack pointer (from MSCRATCH)
-  // and the original return address (from MEPC)
-
-  backup[0] = neorv32_cpu_csr_read(CSR_MSCRATCH); // original stack pointer
-  backup[1] = neorv32_cpu_csr_read(CSR_MEPC) + 4; // actual return address (ecall + 4)
-
-  asm volatile ("ecall"); // trigger second exception (-> double_trap1_handler)
-}
-
-
-/**********************************************************************//**
- * Double trap handler 1: Actual double-trap handler
- **************************************************************************/
-void double_trap1_handler(void) {
-
-  // restore the original stack pointer (from MSCRATCH)
-  // and the original return address (from MEPC)
-
-  // don't do this at home, kids
-  register uint32_t stackpointer = backup[0];
-  asm volatile ("mv sp, %0\n" : : "r"(stackpointer) : "t0");
-  neorv32_cpu_csr_write(CSR_MEPC, backup[1]);
 }
 
 

@@ -96,7 +96,7 @@ enum NEORV32_CSR_enum {
   CSR_DPC            = 0x7b1, /**< 0x7b1 - dpc:       Debug program counter */
   CSR_DSCRATCH0      = 0x7b2, /**< 0x7b2 - dscratch0: Debug scratch register */
 
-  /* custom functions unit (CFU) registers */
+  /* custom functions unit (CFU) */
   CSR_CFUREG0        = 0x800, /**< 0x800 - cfureg0: custom CFU CSR 0 */
   CSR_CFUREG1        = 0x801, /**< 0x801 - cfureg1: custom CFU CSR 1 */
   CSR_CFUREG2        = 0x802, /**< 0x802 - cfureg2: custom CFU CSR 2 */
@@ -142,13 +142,16 @@ enum NEORV32_CSR_enum {
   CSR_CYCLEH         = 0xc80, /**< 0xc80 - cycleh:        User cycle counter high word */
   CSR_INSTRETH       = 0xc82, /**< 0xc82 - instreth:      User instructions-retired counter high word */
 
-  /* machine information registers */
+  /* machine information */
   CSR_MVENDORID      = 0xf11, /**< 0xf11 - mvendorid:  Machine vendor ID */
   CSR_MARCHID        = 0xf12, /**< 0xf12 - marchid:    Machine architecture ID */
   CSR_MIMPID         = 0xf13, /**< 0xf13 - mimpid:     Machine implementation ID */
   CSR_MHARTID        = 0xf14, /**< 0xf14 - mhartid:    Machine hardware thread ID */
   CSR_MCONFIGPTR     = 0xf15, /**< 0xf15 - mconfigptr: Machine configuration pointer register */
-  CSR_MXISA          = 0xfc0  /**< 0xfc0 - mxisa:      Machine extended ISA and extensions (#NEORV32_CSR_MXISA_enum) */
+
+  /* NEORV32-specific */
+  CSR_MXCSR          = 0xbc0, /**< 0xbc0 - mxcsr: Machine control and status register (#NEORV32_CSR_MXCSR_enum) */
+  CSR_MXISA          = 0xfc0  /**< 0xfc0 - mxisa: Machine extended ISA and extensions (#NEORV32_CSR_MXISA_enum) */
 };
 
 
@@ -299,44 +302,48 @@ enum NEORV32_CSR_MISA_enum {
 
 
 /**********************************************************************//**
+ * CPU mxcsr CSR (r/w): Machine control and status register (NEORV32-specific)
+ **************************************************************************/
+enum NEORV32_CSR_MXCSR_enum {
+  CSR_MXCSR_RFHWRST   = 28, /**< CPU mxcsr CSR (28): register file has full hardware reset (r/-)*/
+  CSR_MXCSR_FASTMUL   = 29, /**< CPU mxcsr CSR (29): DSP-based multiplication (M extensions only) (r/-)*/
+  CSR_MXCSR_FASTSHIFT = 30, /**< CPU mxcsr CSR (30): parallel logic for shifts (barrel shifters) (r/-)*/
+  CSR_MXCSR_ISSIM     = 31  /**< CPU mxcsr CSR (31): this might be a simulation when set (r/-)*/
+};
+
+
+/**********************************************************************//**
  * CPU mxisa CSR (r/-): Machine extended instruction set extensions (NEORV32-specific)
  **************************************************************************/
 enum NEORV32_CSR_MXISA_enum {
-  // ISA (sub-)extensions
-  CSR_MXISA_ZICSR     =  0, /**< CPU mxisa CSR  (0): privileged architecture (r/-)*/
-  CSR_MXISA_ZIFENCEI  =  1, /**< CPU mxisa CSR  (1): instruction stream sync (r/-)*/
-  CSR_MXISA_ZMMUL     =  2, /**< CPU mxisa CSR  (2): hardware mul/div (r/-)*/
-  CSR_MXISA_ZXCFU     =  3, /**< CPU mxisa CSR  (3): custom RISC-V instructions (r/-)*/
-  CSR_MXISA_ZKT       =  4, /**< CPU mxisa CSR  (4): data independent execution time (of cryptographic operations) (r/-)*/
-  CSR_MXISA_ZFINX     =  5, /**< CPU mxisa CSR  (5): FPU using x registers (r/-)*/
-  CSR_MXISA_ZICOND    =  6, /**< CPU mxisa CSR  (6): integer conditional operations (r/-)*/
-  CSR_MXISA_ZICNTR    =  7, /**< CPU mxisa CSR  (7): standard instruction, cycle and time counter CSRs (r/-)*/
-  CSR_MXISA_SMPMP     =  8, /**< CPU mxisa CSR  (8): physical memory protection (r/-)*/
-  CSR_MXISA_ZIHPM     =  9, /**< CPU mxisa CSR  (9): hardware performance monitors (r/-)*/
-  CSR_MXISA_SDEXT     = 10, /**< CPU mxisa CSR (10): RISC-V debug mode (r/-)*/
-  CSR_MXISA_SDTRIG    = 11, /**< CPU mxisa CSR (11): RISC-V trigger module (r/-)*/
-  CSR_MXISA_ZBKX      = 12, /**< CPU mxisa CSR (12): scalar cryptography - crossbar permutation (r/-)*/
-  CSR_MXISA_ZKND      = 13, /**< CPU mxisa CSR (13): scalar cryptography - NIST AES decryption (r/-)*/
-  CSR_MXISA_ZKNE      = 14, /**< CPU mxisa CSR (14): scalar cryptography - NIST AES encryption (r/-)*/
-  CSR_MXISA_ZKNH      = 15, /**< CPU mxisa CSR (15): scalar cryptography - NIST hash functions (r/-)*/
-  CSR_MXISA_ZBKB      = 16, /**< CPU mxisa CSR (16): scalar cryptography - bit manipulation instructions (r/-)*/
-  CSR_MXISA_ZBKC      = 17, /**< CPU mxisa CSR (17): scalar cryptography - carry-less multiplication instructions (r/-)*/
-  CSR_MXISA_ZKN       = 18, /**< CPU mxisa CSR (18): scalar cryptography - NIST algorithm suite (r/-)*/
-  CSR_MXISA_ZKSH      = 19, /**< CPU mxisa CSR (19): scalar cryptography - ShangMi hash functions (r/-)*/
-  CSR_MXISA_ZKSED     = 20, /**< CPU mxisa CSR (20): scalar cryptography - ShangMi block cyphers (r/-)*/
-  CSR_MXISA_ZKS       = 21, /**< CPU mxisa CSR (21): scalar cryptography - ShangMi algorithm suite (r/-)*/
-  CSR_MXISA_ZBA       = 22, /**< CPU mxisa CSR (22): shifted-add bit-manipulation operations (r/-)*/
-  CSR_MXISA_ZBB       = 23, /**< CPU mxisa CSR (23): basic bit-manipulation operations (r/-)*/
-  CSR_MXISA_ZBS       = 24, /**< CPU mxisa CSR (24): single-bit bit-manipulation operations (r/-)*/
-  CSR_MXISA_ZAAMO     = 25, /**< CPU mxisa CSR (25): atomic read-modify-write operations (r/-)*/
-  CSR_MXISA_ZALRSC    = 26, /**< CPU mxisa CSR (26): atomic reservation-set operations (r/-)*/
-  CSR_MXISA_ZCB       = 27, /**< CPU mxisa CSR (27): additional code size reduction instruction (r/-)*/
-  // Tuning options
-  CSR_MXISA_RFHWRST   = 28, /**< CPU mxisa CSR (28): register file has full hardware reset (r/-)*/
-  CSR_MXISA_FASTMUL   = 29, /**< CPU mxisa CSR (29): DSP-based multiplication (M extensions only) (r/-)*/
-  CSR_MXISA_FASTSHIFT = 30, /**< CPU mxisa CSR (30): parallel logic for shifts (barrel shifters) (r/-)*/
-  // Misc
-  CSR_MXISA_IS_SIM    = 31  /**< CPU mxisa CSR (31): this might be a simulation when set (r/-)*/
+  CSR_MXISA_ZICSR    =  0, /**< CPU mxisa CSR  (0): privileged architecture (r/-)*/
+  CSR_MXISA_ZIFENCEI =  1, /**< CPU mxisa CSR  (1): instruction stream sync (r/-)*/
+  CSR_MXISA_ZMMUL    =  2, /**< CPU mxisa CSR  (2): hardware mul/div (r/-)*/
+  CSR_MXISA_ZXCFU    =  3, /**< CPU mxisa CSR  (3): custom RISC-V instructions (r/-)*/
+  CSR_MXISA_ZKT      =  4, /**< CPU mxisa CSR  (4): data independent execution time (of cryptographic operations) (r/-)*/
+  CSR_MXISA_ZFINX    =  5, /**< CPU mxisa CSR  (5): FPU using x registers (r/-)*/
+  CSR_MXISA_ZICOND   =  6, /**< CPU mxisa CSR  (6): integer conditional operations (r/-)*/
+  CSR_MXISA_ZICNTR   =  7, /**< CPU mxisa CSR  (7): standard instruction, cycle and time counter CSRs (r/-)*/
+  CSR_MXISA_SMPMP    =  8, /**< CPU mxisa CSR  (8): physical memory protection (r/-)*/
+  CSR_MXISA_ZIHPM    =  9, /**< CPU mxisa CSR  (9): hardware performance monitors (r/-)*/
+  CSR_MXISA_SDEXT    = 10, /**< CPU mxisa CSR (10): RISC-V debug mode (r/-)*/
+  CSR_MXISA_SDTRIG   = 11, /**< CPU mxisa CSR (11): RISC-V trigger module (r/-)*/
+  CSR_MXISA_ZBKX     = 12, /**< CPU mxisa CSR (12): scalar cryptography - crossbar permutation (r/-)*/
+  CSR_MXISA_ZKND     = 13, /**< CPU mxisa CSR (13): scalar cryptography - NIST AES decryption (r/-)*/
+  CSR_MXISA_ZKNE     = 14, /**< CPU mxisa CSR (14): scalar cryptography - NIST AES encryption (r/-)*/
+  CSR_MXISA_ZKNH     = 15, /**< CPU mxisa CSR (15): scalar cryptography - NIST hash functions (r/-)*/
+  CSR_MXISA_ZBKB     = 16, /**< CPU mxisa CSR (16): scalar cryptography - bit manipulation instructions (r/-)*/
+  CSR_MXISA_ZBKC     = 17, /**< CPU mxisa CSR (17): scalar cryptography - carry-less multiplication instructions (r/-)*/
+  CSR_MXISA_ZKN      = 18, /**< CPU mxisa CSR (18): scalar cryptography - NIST algorithm suite (r/-)*/
+  CSR_MXISA_ZKSH     = 19, /**< CPU mxisa CSR (19): scalar cryptography - ShangMi hash functions (r/-)*/
+  CSR_MXISA_ZKSED    = 20, /**< CPU mxisa CSR (20): scalar cryptography - ShangMi block cyphers (r/-)*/
+  CSR_MXISA_ZKS      = 21, /**< CPU mxisa CSR (21): scalar cryptography - ShangMi algorithm suite (r/-)*/
+  CSR_MXISA_ZBA      = 22, /**< CPU mxisa CSR (22): shifted-add bit-manipulation operations (r/-)*/
+  CSR_MXISA_ZBB      = 23, /**< CPU mxisa CSR (23): basic bit-manipulation operations (r/-)*/
+  CSR_MXISA_ZBS      = 24, /**< CPU mxisa CSR (24): single-bit bit-manipulation operations (r/-)*/
+  CSR_MXISA_ZAAMO    = 25, /**< CPU mxisa CSR (25): atomic read-modify-write operations (r/-)*/
+  CSR_MXISA_ZALRSC   = 26, /**< CPU mxisa CSR (26): atomic reservation-set operations (r/-)*/
+  CSR_MXISA_ZCB      = 27  /**< CPU mxisa CSR (27): additional code size reduction instruction (r/-)*/
 };
 
 
@@ -396,7 +403,6 @@ enum NEORV32_EXCEPTION_CODES_enum {
   TRAP_CODE_S_ACCESS     = 0x00000007U, /**< 0.7:  Store (bus) access fault */
   TRAP_CODE_UENV_CALL    = 0x00000008U, /**< 0.8:  Environment call from user mode (ECALL instruction) */
   TRAP_CODE_MENV_CALL    = 0x0000000bU, /**< 0.11: Environment call from machine mode (ECALL instruction) */
-  TRAP_CODE_DOUBLE_TRAP  = 0x00000010U, /**< 0.16: Double-trap */
   TRAP_CODE_MSI          = 0x80000003U, /**< 1.3:  Machine software interrupt */
   TRAP_CODE_MTI          = 0x80000007U, /**< 1.7:  Machine timer interrupt */
   TRAP_CODE_MEI          = 0x8000000bU, /**< 1.11: Machine external interrupt */

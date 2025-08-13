@@ -29,7 +29,7 @@ package neorv32_package is
 
   -- Architecture Constants -----------------------------------------------------------------
   -- -------------------------------------------------------------------------------------------
-  constant hw_version_c : std_ulogic_vector(31 downto 0) := x"01110808"; -- hardware version
+  constant hw_version_c : std_ulogic_vector(31 downto 0) := x"01110903"; -- hardware version
   constant archid_c     : natural := 19; -- official RISC-V architecture ID
   constant XLEN         : natural := 32; -- native data path width
 
@@ -269,8 +269,6 @@ package neorv32_package is
   constant instr_rs2_msb_c     : natural := 24; -- source register 2 address bit 4
   constant instr_funct7_lsb_c  : natural := 25; -- funct7 bit 0
   constant instr_funct7_msb_c  : natural := 31; -- funct7 bit 6
-  constant instr_funct12_lsb_c : natural := 20; -- funct12 bit 0
-  constant instr_funct12_msb_c : natural := 31; -- funct12 bit 11
   constant instr_imm12_lsb_c   : natural := 20; -- immediate12 bit 0
   constant instr_imm12_msb_c   : natural := 31; -- immediate12 bit 11
   constant instr_imm20_lsb_c   : natural := 12; -- immediate20 bit 0
@@ -530,7 +528,8 @@ package neorv32_package is
   constant csr_mimpid_c         : std_ulogic_vector(11 downto 0) := x"f13";
   constant csr_mhartid_c        : std_ulogic_vector(11 downto 0) := x"f14";
   constant csr_mconfigptr_c     : std_ulogic_vector(11 downto 0) := x"f15";
-  -- NEORV32-specific read-only machine registers --
+  -- NEORV32-specific machine registers --
+  constant csr_mxcsr_c          : std_ulogic_vector(11 downto 0) := x"bc0";
   constant csr_mxisa_c          : std_ulogic_vector(11 downto 0) := x"fc0";
 --constant csr_mxisah_c         : std_ulogic_vector(11 downto 0) := x"fc1"; -- to be implemented...
 
@@ -677,7 +676,6 @@ package neorv32_package is
   constant trap_sma_c      : std_ulogic_vector(6 downto 0) := "0" & "0" & "00110"; -- 6: store address misaligned
   constant trap_saf_c      : std_ulogic_vector(6 downto 0) := "0" & "0" & "00111"; -- 7: store access fault
   constant trap_env_c      : std_ulogic_vector(6 downto 0) := "0" & "0" & "01000"; -- 8..11: environment call
-  constant trap_dbt_c      : std_ulogic_vector(6 downto 0) := "0" & "0" & "10000"; -- 16: double-trap
   -- RISC-V compliant asynchronous exceptions (interrupts) --
   constant trap_msi_c      : std_ulogic_vector(6 downto 0) := "1" & "0" & "00011"; -- 3:  machine software interrupt
   constant trap_mti_c      : std_ulogic_vector(6 downto 0) := "1" & "0" & "00111"; -- 7:  machine timer interrupt
@@ -700,10 +698,10 @@ package neorv32_package is
   constant trap_firq14_c   : std_ulogic_vector(6 downto 0) := "1" & "0" & "11110"; -- 30: fast interrupt 14
   constant trap_firq15_c   : std_ulogic_vector(6 downto 0) := "1" & "0" & "11111"; -- 31: fast interrupt 15
   -- debug-mode-entry exceptions --
-  constant trap_db_break_c : std_ulogic_vector(6 downto 0) := "0" & "1" & "00001"; -- 1: break instruction (sync)
-  constant trap_db_trig_c  : std_ulogic_vector(6 downto 0) := "1" & "1" & "00010"; -- 2: hardware trigger (async)
-  constant trap_db_halt_c  : std_ulogic_vector(6 downto 0) := "1" & "1" & "00011"; -- 3: external halt request (async)
-  constant trap_db_step_c  : std_ulogic_vector(6 downto 0) := "1" & "1" & "00100"; -- 4: single-stepping (async)
+  constant trap_db_break_c : std_ulogic_vector(6 downto 0) := "0" & "1" & "00001"; -- 1: break instruction
+  constant trap_db_trig_c  : std_ulogic_vector(6 downto 0) := "1" & "1" & "00010"; -- 2: hardware trigger
+  constant trap_db_halt_c  : std_ulogic_vector(6 downto 0) := "1" & "1" & "00011"; -- 3: external halt request
+  constant trap_db_step_c  : std_ulogic_vector(6 downto 0) := "1" & "1" & "00100"; -- 4: single-stepping
 
   -- Trap System ----------------------------------------------------------------------------
   -- -------------------------------------------------------------------------------------------
@@ -717,9 +715,9 @@ package neorv32_package is
   constant exc_lalign_c   : natural :=  6; -- load address misaligned
   constant exc_saccess_c  : natural :=  7; -- store access fault
   constant exc_laccess_c  : natural :=  8; -- load access fault
-  constant exc_doublet_c  : natural :=  9; -- double-trap
-  constant exc_db_break_c : natural := 10; -- enter debug mode via ebreak instruction
-  constant exc_db_hw_c    : natural := 11; -- enter debug mode via hw trigger
+  constant exc_db_break_c : natural :=  9; -- enter debug mode via break instruction
+  constant exc_db_trig_c  : natural := 10; -- enter debug mode via hardware trigger
+  constant exc_db_step_c  : natural := 11; -- enter debug mode via single-stepping
   constant exc_width_c    : natural := 12; -- length of this list in bits
   -- interrupt source list --
   constant irq_msi_irq_c  : natural :=  0; -- machine software interrupt
@@ -742,8 +740,7 @@ package neorv32_package is
   constant irq_firq_14_c  : natural := 17; -- fast interrupt channel 14
   constant irq_firq_15_c  : natural := 18; -- fast interrupt channel 15
   constant irq_db_halt_c  : natural := 19; -- enter debug mode via external halt request
-  constant irq_db_step_c  : natural := 20; -- enter debug mode via single-stepping
-  constant irq_width_c    : natural := 21; -- length of this list in bits
+  constant irq_width_c    : natural := 20; -- length of this list in bits
 
   -- Privilege Modes ------------------------------------------------------------------------
   -- -------------------------------------------------------------------------------------------
@@ -784,8 +781,6 @@ package neorv32_package is
   function to_hexchar_f(input : std_ulogic_vector(3 downto 0)) return character;
   function bit_rev_f(input : std_ulogic_vector) return std_ulogic_vector;
   function is_power_of_two_f(input : natural) return boolean;
-  function popcount_f(input : std_ulogic_vector) return natural;
-  function leading_zeros_f(input : std_ulogic_vector) return natural;
   function replicate_f(input : std_ulogic; num : natural) return std_ulogic_vector;
   impure function mem32_init_f(init : mem32_t; depth : natural) return mem32_t;
   function print_hex_f(data : std_ulogic_vector) return string;
@@ -1154,36 +1149,6 @@ package body neorv32_package is
       return false;
     end if;
   end function is_power_of_two_f;
-
-  -- Population count (number of set bits) --------------------------------------------------
-  -- -------------------------------------------------------------------------------------------
-  function popcount_f(input : std_ulogic_vector) return natural is
-    variable cnt_v : natural range 0 to input'length;
-  begin
-    cnt_v := 0;
-    for i in 0 to input'length-1 loop
-      if (input(i) = '1') then
-        cnt_v := cnt_v + 1;
-      end if;
-    end loop;
-    return cnt_v;
-  end function popcount_f;
-
-  -- Count leading zeros --------------------------------------------------------------------
-  -- -------------------------------------------------------------------------------------------
-  function leading_zeros_f(input : std_ulogic_vector) return natural is
-    variable cnt_v : natural range 0 to input'length;
-  begin
-    cnt_v := 0;
-    for i in input'length-1 downto 0 loop
-      if (input(i) = '0') then
-        cnt_v := cnt_v + 1;
-      else
-        exit;
-      end if;
-    end loop;
-    return cnt_v;
-  end function leading_zeros_f;
 
   -- Replicate input bit num times ----------------------------------------------------------
   -- -------------------------------------------------------------------------------------------
