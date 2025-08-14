@@ -20,10 +20,10 @@ entity neorv32_tb is
   generic (
     -- processor --
     CLOCK_FREQUENCY     : natural                        := 100_000_000; -- clock frequency of clk_i in Hz
-    DUAL_CORE_EN        : boolean                        := false;       -- enable dual-core homogeneous SMP
+    DUAL_CORE_EN        : boolean                        := true;        -- enable dual-core homogeneous SMP
     BOOT_MODE_SELECT    : natural range 0 to 2           := 2;           -- boot from pre-initialized IMEM
     BOOT_ADDR_CUSTOM    : std_ulogic_vector(31 downto 0) := x"00000000"; -- custom CPU boot address (if boot_config = 1)
-    RISCV_ISA_C         : boolean                        := true;        -- implement compressed extension
+    RISCV_ISA_C         : boolean                        := false;       -- implement compressed extension
     RISCV_ISA_E         : boolean                        := false;       -- implement embedded RF extension
     RISCV_ISA_M         : boolean                        := true;        -- implement mul/div extension
     RISCV_ISA_U         : boolean                        := true;        -- implement user mode extension
@@ -51,14 +51,14 @@ entity neorv32_tb is
     CPU_FAST_SHIFT_EN   : boolean                        := true;        -- use barrel shifter for shift operations
     CPU_RF_HW_RST_EN    : boolean                        := false;       -- implement full hardware reset for register file
     IMEM_EN             : boolean                        := true;        -- implement processor-internal instruction memory
-    IMEM_SIZE           : natural                        := 64*1024;     -- size of processor-internal instruction memory in bytes (use a power of 2)
+    IMEM_SIZE           : natural                        := 32*1024;     -- size of processor-internal instruction memory in bytes (use a power of 2)
     DMEM_EN             : boolean                        := true;        -- implement processor-internal data memory
-    DMEM_SIZE           : natural                        := 64*1024;     -- size of processor-internal data memory in bytes (use a power of 2)
+    DMEM_SIZE           : natural                        := 8*1024;      -- size of processor-internal data memory in bytes (use a power of 2)
     ICACHE_EN           : boolean                        := true;        -- implement instruction cache
-    ICACHE_NUM_BLOCKS   : natural range 1 to 4096        := 32;          -- i-cache: number of blocks (min 1), has to be a power of 2
+    ICACHE_NUM_BLOCKS   : natural range 1 to 4096        := 64;          -- i-cache: number of blocks (min 1), has to be a power of 2
     DCACHE_EN           : boolean                        := true;        -- implement data cache
     DCACHE_NUM_BLOCKS   : natural range 1 to 4096        := 32;          -- d-cache: number of blocks (min 1), has to be a power of 2
-    CACHE_BLOCK_SIZE    : natural range 8 to 1024        := 64;          -- i-cache/d-cache: block size in bytes (min 8), has to be a power of 2
+    CACHE_BLOCK_SIZE    : natural range 8 to 1024        := 32;          -- i-cache/d-cache: block size in bytes (min 8), has to be a power of 2
     CACHE_BURSTS_EN     : boolean                        := true;        -- enable issuing of burst transfer for cache update
     TRACE_LOG_EN        : boolean                        := true;        -- write full trace log to file
     -- external memory A --
