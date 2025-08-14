@@ -21,8 +21,9 @@ use neorv32.neorv32_package.all;
 
 entity neorv32_cpu_frontend is
   generic (
-    RISCV_C   : boolean; -- implement C ISA extension
-    RISCV_ZCB : boolean  -- implement Zcb ISA sub-extension
+    FIFO_DEPTH : natural := 4;     -- number of FIFO entries; has to be a power of two; min 1
+    RISCV_C    : boolean;          -- implement C ISA extension
+    RISCV_ZCB  : boolean           -- implement Zcb ISA sub-extension
   );
   port (
     -- global control --
@@ -45,16 +46,19 @@ architecture neorv32_cpu_frontend_rtl of neorv32_cpu_frontend is
     state   : state_t;
     restart : std_ulogic; -- buffered restart request (after branch)
     pc      : std_ulogic_vector(XLEN-1 downto 0);
-    priv    : std_ulogic; -- fetch privilege level
+    pc2     : std_ulogic_vector(XLEN-1 downto 0);
+    priv    : std_ulogic; -- fetch privilege level;
   end record;
-  signal fetch : fetch_t;
+  signal fetch, fetch_nxt : fetch_t;
 
   -- instruction prefetch buffer (FIFO) interface --
   type ipb_data_t is array (0 to 1) of std_ulogic_vector(16 downto 0); -- bus_error & 16-bit instruction
+  type ipb_level_t is array (0 to 1) of std_ulogic_vector(31 downto 0); -- ipb level signal
   type ipb_t is record
     wdata, rdata : ipb_data_t;
     we,    re    : std_ulogic_vector(1 downto 0);
     free,  avail : std_ulogic_vector(1 downto 0);
+    level        : ipb_level_t;
   end record;
   signal ipb : ipb_t;
 
@@ -72,56 +76,87 @@ begin
 
   -- Fetch Engine FSM -----------------------------------------------------------------------
   -- -------------------------------------------------------------------------------------------
-  fetch_fsm: process(rstn_i, clk_i)
+  sync_fetch_fsm: process(rstn_i, clk_i)
   begin
     if (rstn_i = '0') then
       fetch.state   <= S_RESTART;
       fetch.restart <= '1'; -- reset IPB and issue engine
       fetch.pc      <= (others => '0');
+      fetch.pc2     <= (others => '0');
       fetch.priv    <= priv_mode_m_c;
     elsif rising_edge(clk_i) then
-      case fetch.state is
-
-        when S_RESTART => -- set new start address
-        -- ------------------------------------------------------------
-          fetch.restart <= '0'; -- restart done
-          fetch.pc      <= ctrl_i.pc_nxt; -- initialize from PC
-          fetch.priv    <= ctrl_i.cpu_priv; -- set new privilege level
-          fetch.state   <= S_REQUEST;
-
-        when S_REQUEST => -- request next 32-bit-aligned instruction word
-        -- ------------------------------------------------------------
-          fetch.restart <= fetch.restart or ctrl_i.if_reset; -- buffer restart request
-          if (ipb.free = "11") then -- free IPB space?
-            fetch.state <= S_PENDING;
-          elsif (fetch.restart = '1') or (ctrl_i.if_reset = '1') then -- restart because of branch
-            fetch.state <= S_RESTART;
-          end if;
-
-        when S_PENDING => -- wait for bus response and write instruction data to prefetch buffer
-        -- ------------------------------------------------------------
-          fetch.restart <= fetch.restart or ctrl_i.if_reset; -- buffer restart request
-          if (ibus_rsp_i.ack = '1') then -- wait for bus response
-            fetch.pc    <= std_ulogic_vector(unsigned(fetch.pc) + 4); -- next word
-            fetch.pc(1) <= '0'; -- (re-)align to 32-bit
-            if (fetch.restart = '1') or (ctrl_i.if_reset = '1') then -- restart request due to branch
-              fetch.state <= S_RESTART;
-            else -- request next linear instruction word
-              fetch.state <= S_REQUEST;
-            end if;
-          end if;
-
-        when others => -- undefined
-        -- ------------------------------------------------------------
-          fetch.state <= S_RESTART;
-
-      end case;
+      fetch         <= fetch_nxt;
     end if;
-  end process fetch_fsm;
+  end process sync_fetch_fsm;
+  
+  comb_fetch_fsm: process(fetch, ipb, ctrl_i, ibus_rsp_i)
+  begin
+    fetch_nxt         <= fetch;
+    fetch_nxt.restart <= fetch.restart or ctrl_i.if_reset; -- buffer restart request
+
+    ibus_req_o.burst  <= '0';              -- single-access as default
+    ibus_req_o.lock   <= '0';              -- unlocked access as default
+    ibus_req_o.stb    <= '0';              -- unset strobe as default
+
+    case fetch.state is
+
+      when S_RESTART => -- set new start address
+      -- ------------------------------------------------------------
+        fetch_nxt.restart <= '0'; -- restart done
+        fetch_nxt.pc      <= ctrl_i.pc_nxt; -- initialize from PC
+        fetch_nxt.pc2     <= ctrl_i.pc_nxt; -- initialize from PC2
+        fetch_nxt.priv    <= ctrl_i.cpu_priv; -- set new privilege level
+        fetch_nxt.state   <= S_REQUEST;
+
+      when S_REQUEST => -- request next 32-bit-aligned instruction word
+      -- ------------------------------------------------------------
+        if (fetch.restart = '1') or (ctrl_i.if_reset = '1') then -- restart because of branch
+          fetch_nxt.state <= S_RESTART;
+        elsif (ipb.free = "11") then -- free IPB space?
+          fetch_nxt.state   <= S_PENDING;
+          ibus_req_o.stb    <= '1';
+          ibus_req_o.burst  <= '1';
+          ibus_req_o.lock   <= '1';
+          fetch_nxt.pc2     <= std_ulogic_vector(unsigned(fetch.pc2) + 4); -- next word
+          fetch_nxt.pc2(1)  <= '0'; -- (re-)align to 32-bit
+        end if;
+
+      when S_PENDING => -- wait for bus response and write instruction data to prefetch buffer
+      -- ------------------------------------------------------------
+        ibus_req_o.burst      <= '1';
+        ibus_req_o.lock       <= '1';
+        
+        if (ibus_rsp_i.ack = '1') then -- wait for bus response
+          fetch_nxt.pc        <= fetch.pc2;
+          if (fetch.restart = '1') or (ctrl_i.if_reset = '1') then -- restart request due to branch
+            fetch_nxt.state   <= S_RESTART;
+            ibus_req_o.burst  <= '0';
+            ibus_req_o.lock   <= '0';
+          elsif ((unsigned(ipb.level(0)) < FIFO_DEPTH-1) and 
+                 (unsigned(ipb.level(1)) < FIFO_DEPTH-1)) then -- request next linear instruction word
+            fetch_nxt.state   <= S_PENDING;
+            ibus_req_o.stb    <= '1';
+            ibus_req_o.burst  <= '1';
+            ibus_req_o.lock   <= '1';
+            fetch_nxt.pc2     <= std_ulogic_vector(unsigned(fetch.pc2) + 4); -- next word
+            fetch_nxt.pc2(1)  <= '0'; -- (re-)align to 32-bit
+          else -- request next linear instruction word
+            fetch_nxt.state   <= S_REQUEST;
+            ibus_req_o.burst  <= '0';
+            ibus_req_o.lock   <= '0';
+          end if;
+        end if;
+
+      when others => -- undefined
+      -- ------------------------------------------------------------
+        fetch_nxt.state <= S_RESTART;
+
+    end case;
+  end process comb_fetch_fsm;
 
   -- instruction bus request --
-  ibus_req_o.addr  <= fetch.pc(XLEN-1 downto 2) & "00"; -- word aligned
-  ibus_req_o.stb   <= '1' when (fetch.state = S_REQUEST) and (ipb.free = "11") else '0';
+  ibus_req_o.addr  <= fetch.pc2(XLEN-1 downto 2) & "00" when (fetch.state = S_PENDING) and (ibus_rsp_i.ack = '1') else 
+                      fetch.pc (XLEN-1 downto 2) & "00"; -- word aligned
   ibus_req_o.data  <= (others => '0');  -- read-only
   ibus_req_o.ben   <= (others => '1');  -- always full-word access
   ibus_req_o.rw    <= '0';              -- read-only
@@ -130,8 +165,6 @@ begin
   ibus_req_o.debug <= ctrl_i.cpu_debug; -- CPU is in debug mode
   ibus_req_o.amo   <= '0';              -- cannot be an atomic memory operation
   ibus_req_o.amoop <= (others => '0');  -- cannot be an atomic memory operation
-  ibus_req_o.burst <= '0';              -- only single-access
-  ibus_req_o.lock  <= '0';              -- always unlocked access
   ibus_req_o.fence <= ctrl_i.if_fence;  -- fence request, valid without STB being set ("out-of-band" signal)
 
   -- IPB instruction data and status --
@@ -149,12 +182,12 @@ begin
   for i in 0 to 1 generate
     prefetch_buffer_inst: entity neorv32.neorv32_fifo
     generic map (
-      FIFO_DEPTH => 2,     -- number of IPB entries; has to be a power of two, min 2
-      FIFO_WIDTH => 17,    -- error status & instruction half-word data
-      FIFO_RSYNC => false, -- we NEED to read data asynchronously
-      FIFO_SAFE  => false, -- no safe access required (ensured by FIFO-external logic)
-      FULL_RESET => false, -- no need for a full hardware reset,
-      OUT_GATE   => false  -- no output gate required
+      FIFO_DEPTH => FIFO_DEPTH,     -- number of IPB entries; has to be a power of two, min 2
+      FIFO_WIDTH => 17,             -- error status & instruction half-word data
+      FIFO_RSYNC => false,          -- we NEED to read data asynchronously
+      FIFO_SAFE  => false,          -- no safe access required (ensured by FIFO-external logic)
+      FULL_RESET => false,          -- no need for a full hardware reset,
+      OUT_GATE   => false           -- no output gate required
     )
     port map (
       -- control and status --
@@ -162,7 +195,7 @@ begin
       rstn_i  => rstn_i,        -- async reset, low-active
       clear_i => fetch.restart, -- sync reset, high-active
       half_o  => open,          -- at least half full
-      level_o => open,          -- fill level, zero-extended
+      level_o => ipb.level(i),  -- fill level, zero-extended
       -- write port --
       wdata_i => ipb.wdata(i),  -- write data
       we_i    => ipb.we(i),     -- write enable
