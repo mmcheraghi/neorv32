@@ -94,7 +94,6 @@ begin
     fetch_nxt         <= fetch;
     fetch_nxt.restart <= fetch.restart or ctrl_i.if_reset; -- buffer restart request
 
-    ibus_req_o.addr   <= fetch.pc(XLEN-1 downto 2) & "00"; -- word aligned
     ibus_req_o.burst  <= '0';              -- only single-access
     ibus_req_o.lock   <= '0';              -- always unlocked access
     ibus_req_o.stb    <= '0';
@@ -129,8 +128,6 @@ begin
         
         if (ibus_rsp_i.ack = '1') then -- wait for bus response
           fetch_nxt.pc        <= fetch.pc2;
-          ibus_req_o.addr     <= fetch.pc2(XLEN-1 downto 2) & "00"; -- word aligned
-
           if (fetch.restart = '1') or (ctrl_i.if_reset = '1') then -- restart request due to branch
             fetch_nxt.state   <= S_RESTART;
             ibus_req_o.burst  <= '0';
@@ -158,6 +155,8 @@ begin
   end process comb_fetch_fsm;
 
   -- instruction bus request --
+  ibus_req_o.addr  <= fetch.pc2(XLEN-1 downto 2) & "00" when (fetch.state = S_PENDING) and (ibus_rsp_i.ack = '1') else 
+                      fetch.pc (XLEN-1 downto 2) & "00"; -- word aligned
   ibus_req_o.data  <= (others => '0');  -- read-only
   ibus_req_o.ben   <= (others => '1');  -- always full-word access
   ibus_req_o.rw    <= '0';              -- read-only
