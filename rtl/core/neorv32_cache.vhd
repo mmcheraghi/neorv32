@@ -168,6 +168,7 @@ begin
     bus_req_o       <= host_req_i;
     bus_req_o.stb   <= '0'; -- no request by default
     bus_req_o.burst <= '0'; -- no burst by default
+    bus_req_o.lock  <= '0'; -- no lock by default
     bus_req_o.fence <= '0'; -- no fence by default
 
     -- fsm --
