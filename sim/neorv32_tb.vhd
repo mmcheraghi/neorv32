@@ -23,7 +23,7 @@ entity neorv32_tb is
     DUAL_CORE_EN        : boolean                        := true;        -- enable dual-core homogeneous SMP
     BOOT_MODE_SELECT    : natural range 0 to 2           := 2;           -- boot from pre-initialized IMEM
     BOOT_ADDR_CUSTOM    : std_ulogic_vector(31 downto 0) := x"00000000"; -- custom CPU boot address (if boot_config = 1)
-    RISCV_ISA_C         : boolean                        := false;       -- implement compressed extension
+    RISCV_ISA_C         : boolean                        := true;       -- implement compressed extension
     RISCV_ISA_E         : boolean                        := false;       -- implement embedded RF extension
     RISCV_ISA_M         : boolean                        := true;        -- implement mul/div extension
     RISCV_ISA_U         : boolean                        := true;        -- implement user mode extension
