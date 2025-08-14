@@ -111,12 +111,11 @@ architecture neorv32_cache_rtl of neorv32_cache is
     idx      : std_ulogic_vector(index_size_c-1 downto 0); -- index
     ofs_int  : std_ulogic_vector(offset_size_c-1 downto 0); -- cache address offset
     ofs_ext  : std_ulogic_vector(offset_size_c downto 0); -- bus address offset
-    addr     : std_ulogic_vector(31 downto 0); -- access address
-    data     : std_ulogic_vector(31 downto 0); -- data to be written that is determined during stb high
+    addr     : std_ulogic_vector(31 downto 0); -- address of the new access
+    data     : std_ulogic_vector(31 downto 0); -- data to be written in the new access
   end record;
   signal ctrl, ctrl_nxt : ctrl_t;
 
-  
 begin
 
   -- Control Engine FSM Sync ----------------------------------------------------------------
@@ -155,6 +154,7 @@ begin
     ctrl_nxt.idx      <= ctrl.idx;
     ctrl_nxt.ofs_int  <= ctrl.ofs_int;
     ctrl_nxt.ofs_ext  <= ctrl.ofs_ext;
+
     if (host_req_i.stb = '1') then
       ctrl_nxt.addr   <= host_req_i.addr;
       ctrl_nxt.data   <= host_req_i.data;
@@ -167,8 +167,8 @@ begin
     cache_o.cmd_clr <= '0';
     cache_o.cmd_inv <= '0';
     cache_o.cmd_new <= '0';
-    cache_o.addr    <= ctrl_nxt.addr;
     cache_o.we      <= (others => '0');
+    cache_o.addr    <= ctrl_nxt.addr;
     cache_o.data    <= ctrl_nxt.data;
 
     -- host response defaults --
@@ -178,7 +178,8 @@ begin
 
     -- bus interface defaults --
     bus_req_o       <= host_req_i;
-    bus_req_o.addr  <= ctrl_nxt.addr;
+    bus_req_o.addr  <= ctrl.addr;
+    bus_req_o.data  <= ctrl.data;
     bus_req_o.stb   <= '0'; -- no request by default
     bus_req_o.burst <= '0'; -- no burst by default
     bus_req_o.fence <= '0'; -- no fence by default
