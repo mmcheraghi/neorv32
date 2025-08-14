@@ -94,9 +94,9 @@ begin
     fetch_nxt         <= fetch;
     fetch_nxt.restart <= fetch.restart or ctrl_i.if_reset; -- buffer restart request
 
-    ibus_req_o.burst  <= '0';              -- only single-access
-    ibus_req_o.lock   <= '0';              -- always unlocked access
-    ibus_req_o.stb    <= '0';
+    ibus_req_o.burst  <= '0';              -- single-access as default
+    ibus_req_o.lock   <= '0';              -- unlocked access as default
+    ibus_req_o.stb    <= '0';              -- unset strobe as default
 
     case fetch.state is
 
@@ -104,7 +104,7 @@ begin
       -- ------------------------------------------------------------
         fetch_nxt.restart <= '0'; -- restart done
         fetch_nxt.pc      <= ctrl_i.pc_nxt; -- initialize from PC
-        fetch_nxt.pc2     <= ctrl_i.pc_nxt; -- initialize from PC
+        fetch_nxt.pc2     <= ctrl_i.pc_nxt; -- initialize from PC2
         fetch_nxt.priv    <= ctrl_i.cpu_priv; -- set new privilege level
         fetch_nxt.state   <= S_REQUEST;
 
