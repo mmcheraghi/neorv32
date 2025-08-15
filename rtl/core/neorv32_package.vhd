@@ -564,6 +564,11 @@ package neorv32_package is
     alu_cp_alu   : std_ulogic;                     -- ALU.base co-processor trigger (one-shot)
     alu_cp_cfu   : std_ulogic;                     -- CFU co-processor trigger (one-shot)
     alu_cp_fpu   : std_ulogic;                     -- FPU co-processor trigger (one-shot)
+    alu_cmp      : std_ulogic_vector(1 downto 0);  -- comparator status
+    alu_res      : std_ulogic_vector(31 downto 0); -- ALU result
+    alu_add      : std_ulogic_vector(31 downto 0); -- address computation result
+    alu_csr      : std_ulogic_vector(31 downto 0); -- CSR read data
+    alu_done     : std_ulogic;                     -- co-processor operation done?
     -- load/store unit --
     lsu_req      : std_ulogic;                     -- trigger memory access request
     lsu_rw       : std_ulogic;                     -- 0: read access, 1: write access
@@ -611,6 +616,11 @@ package neorv32_package is
     alu_cp_alu   => '0',
     alu_cp_cfu   => '0',
     alu_cp_fpu   => '0',
+    alu_cmp      => (others => '0'),
+    alu_res      => (others => '0'),
+    alu_add      => (others => '0'),
+    alu_csr      => (others => '0'),
+    alu_done     => '0',
     lsu_req      => '0',
     lsu_rw       => '0',
     lsu_amo      => '0',
