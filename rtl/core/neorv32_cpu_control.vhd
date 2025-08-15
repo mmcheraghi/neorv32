@@ -76,10 +76,15 @@ entity neorv32_cpu_control is
     pmp_fault_i   : in  std_ulogic;                         -- instruction fetch / execute pmp fault
     hwtrig_i      : in  std_ulogic;                         -- hardware trigger
     -- data path interface --
-    alu_cp_done_i : in  std_ulogic;                         -- ALU iterative operation done
     alu_cmp_i     : in  std_ulogic_vector(1 downto 0);      -- comparator status
+    alu_res_i     : in  std_ulogic_vector(XLEN-1 downto 0); -- ALU result
     alu_add_i     : in  std_ulogic_vector(XLEN-1 downto 0); -- ALU address result
+    xcsr_alu_i    : in  std_ulogic_vector(XLEN-1 downto 0); -- CSR read data
+    alu_cp_done_i : in  std_ulogic;                         -- ALU iterative operation done
+    
     rf_rs1_i      : in  std_ulogic_vector(XLEN-1 downto 0); -- rf source 1
+    rf_rs2_i      : in  std_ulogic_vector(XLEN-1 downto 0); -- rf source 2
+    rf_rs3_i      : in  std_ulogic_vector(XLEN-1 downto 0); -- rf source 3
     csr_rdata_o   : out std_ulogic_vector(XLEN-1 downto 0); -- CSR read data
     xcsr_rdata_i  : in  std_ulogic_vector(XLEN-1 downto 0); -- external CSR read data
     -- interrupts --
