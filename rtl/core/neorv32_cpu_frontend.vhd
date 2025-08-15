@@ -21,6 +21,7 @@ use neorv32.neorv32_package.all;
 
 entity neorv32_cpu_frontend is
   generic (
+    BURSTS_EN  : boolean := false; -- implement burst IPB filling mode
     FIFO_DEPTH : natural := 4;     -- number of FIFO entries; has to be a power of two; min 1
     RISCV_C    : boolean;          -- implement C ISA extension
     RISCV_ZCB  : boolean           -- implement Zcb ISA sub-extension
@@ -115,7 +116,7 @@ begin
         elsif (ipb.free = "11") then -- free IPB space?
           fetch_nxt.state   <= S_PENDING;
           ibus_req_o.stb    <= '1';
-          ibus_req_o.burst  <= '1';
+          ibus_req_o.burst  <= bool_to_ulogic_f(BURSTS_EN);
           ibus_req_o.lock   <= '1';
           fetch_nxt.pc2     <= std_ulogic_vector(unsigned(fetch.pc2) + 4); -- next word
           fetch_nxt.pc2(1)  <= '0'; -- (re-)align to 32-bit
@@ -123,7 +124,7 @@ begin
 
       when S_PENDING => -- wait for bus response and write instruction data to prefetch buffer
       -- ------------------------------------------------------------
-        ibus_req_o.burst      <= '1';
+        ibus_req_o.burst      <= bool_to_ulogic_f(BURSTS_EN);
         ibus_req_o.lock       <= '1';
         
         if (ibus_rsp_i.ack = '1') then -- wait for bus response
@@ -132,11 +133,11 @@ begin
             fetch_nxt.state   <= S_RESTART;
             ibus_req_o.burst  <= '0';
             ibus_req_o.lock   <= '0';
-          elsif ((unsigned(ipb.level(0)) < FIFO_DEPTH-1) and 
-                 (unsigned(ipb.level(1)) < FIFO_DEPTH-1)) then -- request next linear instruction word
+          elsif (BURSTS_EN) and ((unsigned(ipb.level(0)) < FIFO_DEPTH-1) and 
+                                 (unsigned(ipb.level(1)) < FIFO_DEPTH-1)) then -- request next linear instruction word
             fetch_nxt.state   <= S_PENDING;
             ibus_req_o.stb    <= '1';
-            ibus_req_o.burst  <= '1';
+            ibus_req_o.burst  <= bool_to_ulogic_f(BURSTS_EN);
             ibus_req_o.lock   <= '1';
             fetch_nxt.pc2     <= std_ulogic_vector(unsigned(fetch.pc2) + 4); -- next word
             fetch_nxt.pc2(1)  <= '0'; -- (re-)align to 32-bit
