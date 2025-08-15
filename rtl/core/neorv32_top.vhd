@@ -520,7 +520,9 @@ begin
       HPM_NUM_CNTS        => HPM_NUM_CNTS,
       HPM_CNT_WIDTH       => HPM_CNT_WIDTH,
       -- Trigger Module (TM) --
-      NUM_HW_TRIGGERS     => OCD_NUM_HW_TRIGGERS
+      NUM_HW_TRIGGERS     => OCD_NUM_HW_TRIGGERS,
+      -- IPB BURST mode --
+      IPB_BURSTS_EN         => ICACHE_EN and CACHE_BURSTS_EN
     )
     port map (
       -- global control --
