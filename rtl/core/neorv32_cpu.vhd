@@ -267,10 +267,15 @@ begin
     pmp_fault_i   => pmp_fault,   -- instruction fetch / execute pmp fault
     hwtrig_i      => hwtrig,      -- hardware trigger
     -- data path interface --
-    alu_cp_done_i => alu_cp_done, -- ALU iterative operation done
     alu_cmp_i     => alu_cmp,     -- comparator status
+    alu_res_i     => alu_res,     -- ALU result
     alu_add_i     => alu_add,     -- ALU address result
+    xcsr_alu_i    => xcsr_alu,    -- CSR read data
+    alu_cp_done_i => alu_cp_done, -- ALU iterative operation done
+    
     rf_rs1_i      => rs1,         -- rf source 1
+    rf_rs2_i      => rs2,         -- rf source 2
+    rf_rs3_i      => rs3,         -- rf source 3
     csr_rdata_o   => csr_rdata,   -- CSR read data
     xcsr_rdata_i  => xcsr_res,    -- external CSR read data
     -- interrupts --
