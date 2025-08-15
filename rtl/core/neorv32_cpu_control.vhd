@@ -101,8 +101,8 @@ end neorv32_cpu_control;
 architecture neorv32_cpu_control_rtl of neorv32_cpu_control is
 
   -- instruction execution engine --
-  type exe_engine_state_t is (EX_RESTART, EX_FETCH, EX_TRAP_ENTER, EX_TRAP_EXIT, EX_SLEEP, EX_DECODE,
-                              EX_ALU_WAIT, EX_BRANCH, EX_BRANCHED, EX_SYSTEM, EX_MEM_REQ, EX_MEM_RSP);
+  type exe_engine_state_t is (EX_RESTART, EX_FETCH, EX_TRAP_ENTER, EX_TRAP_EXIT, EX_SLEEP, EX_DECODE, EX_EXECUTE,
+                              EX_WRITEBACK, EX_ALU_WAIT, EX_BRANCH, EX_BRANCHED, EX_SYSTEM, EX_MEM_REQ, EX_MEM_RSP);
   type exe_engine_t is record
     state : exe_engine_state_t;
     ir    : std_ulogic_vector(31 downto 0); -- instruction word being executed right now
@@ -420,8 +420,7 @@ begin
                                        ((funct3_v = funct3_slt_c)  and (funct7_v = "0000000")) or ((funct3_v = funct3_sltu_c) and (funct7_v = "0000000")) or
                                        ((funct3_v = funct3_xor_c)  and (funct7_v = "0000000")) or ((funct3_v = funct3_or_c)   and (funct7_v = "0000000")) or
                                        ((funct3_v = funct3_and_c)  and (funct7_v = "0000000")))) then -- base ALU instruction (excluding SLL, SRL, SRA)
-              ctrl_nxt.rf_wb_en    <= '1'; -- valid RF write-back (won't happen if exception)
-              exe_engine_nxt.state <= EX_FETCH;
+              exe_engine_nxt.state <= EX_EXECUTE;
             else -- [NOTE] illegal ALU[I] instructions are handled as multi-cycle operations that will time-out as no ALU co-processor responds
               ctrl_nxt.alu_cp_alu  <= '1'; -- trigger ALU[I] opcode-space co-processor
               exe_engine_nxt.state <= EX_ALU_WAIT;
@@ -430,14 +429,12 @@ begin
           -- load upper immediate --
           when opcode_lui_c =>
             ctrl_nxt.alu_op      <= alu_op_movb_c; -- pass immediate
-            ctrl_nxt.rf_wb_en    <= '1'; -- valid RF write-back (won't happen if exception)
-            exe_engine_nxt.state <= EX_FETCH;
+            exe_engine_nxt.state <= EX_EXECUTE;
 
           -- add upper immediate to PC --
           when opcode_auipc_c =>
             ctrl_nxt.alu_op      <= alu_op_add_c; -- add PC and immediate
-            ctrl_nxt.rf_wb_en    <= '1'; -- valid RF write-back (won't happen if exception)
-            exe_engine_nxt.state <= EX_FETCH;
+            exe_engine_nxt.state <= EX_EXECUTE;
 
           -- memory access --
           when opcode_load_c | opcode_store_c | opcode_amo_c =>
@@ -477,12 +474,21 @@ begin
 
         end case; -- /EX_DECODE
 
+      when EX_EXECUTE   =>
+        ctrl_nxt.alu_sub     <= ctrl.alu_sub;
+        ctrl_nxt.alu_op      <= ctrl.alu_op;
+        ctrl_nxt.rf_wb_en    <= '1'; -- valid RF write-back (won't happen if exception)
+        exe_engine_nxt.state <= EX_WRITEBACK;
+
+      when EX_WRITEBACK =>
+        exe_engine_nxt.state <= EX_FETCH;
+
       when EX_ALU_WAIT => -- wait for multi-cycle ALU co-processor operation to finish or trap
       -- ------------------------------------------------------------
         ctrl_nxt.alu_op   <= alu_op_cp_c;
         ctrl_nxt.rf_wb_en <= alu_cp_done_i; -- valid RF write-back (won't happen if exception)
         if (alu_cp_done_i = '1') or (or_reduce_f(trap_ctrl.exc_buf(exc_ialign_c downto exc_iaccess_c)) = '1') then
-          exe_engine_nxt.state <= EX_FETCH;
+          exe_engine_nxt.state <= EX_WRITEBACK;
         end if;
 
       when EX_BRANCH => -- update next PC on taken branches and jumps
