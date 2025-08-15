@@ -67,7 +67,9 @@ entity neorv32_cpu is
     HPM_NUM_CNTS        : natural range 0 to 13; -- number of implemented HPM counters (0..13)
     HPM_CNT_WIDTH       : natural range 0 to 64; -- total size of HPM counters (0..64)
     -- Trigger Module (TM) --
-    NUM_HW_TRIGGERS     : natural range 0 to 16 -- number of hardware triggers
+    NUM_HW_TRIGGERS     : natural range 0 to 16; -- number of hardware triggers
+    -- IPB BURST mode --
+    IPB_BURSTS_EN       : boolean := false -- implement IPB burst mode
   );
   port (
     -- global control --
@@ -191,8 +193,9 @@ begin
   -- -------------------------------------------------------------------------------------------
   neorv32_cpu_frontend_inst: entity neorv32.neorv32_cpu_frontend
   generic map (
-    RISCV_C   => RISCV_ISA_C,  -- implement C ISA extension
-    RISCV_ZCB => RISCV_ISA_Zcb -- implement Zcb ISA sub-extension
+    BURSTS_EN => IPB_BURSTS_EN, -- implement IPB burst mode 
+    RISCV_C   => RISCV_ISA_C,   -- implement C ISA extension
+    RISCV_ZCB => RISCV_ISA_Zcb  -- implement Zcb ISA sub-extension
   )
   port map (
     -- global control --
