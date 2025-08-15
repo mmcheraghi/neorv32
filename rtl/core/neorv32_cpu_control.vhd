@@ -96,7 +96,7 @@ end neorv32_cpu_control;
 architecture neorv32_cpu_control_rtl of neorv32_cpu_control is
 
   -- instruction execution engine --
-  type exe_engine_state_t is (EX_RESTART, EX_DISPATCH, EX_TRAP_ENTER, EX_TRAP_EXIT, EX_SLEEP, EX_EXECUTE,
+  type exe_engine_state_t is (EX_RESTART, EX_FETCH, EX_TRAP_ENTER, EX_TRAP_EXIT, EX_SLEEP, EX_DECODE,
                               EX_ALU_WAIT, EX_BRANCH, EX_BRANCHED, EX_SYSTEM, EX_MEM_REQ, EX_MEM_RSP);
   type exe_engine_t is record
     state : exe_engine_state_t;
@@ -209,28 +209,20 @@ begin
     if (rstn_i = '0') then
       immediate <= (others => '0');
     elsif rising_edge(clk_i) then
-      if (exe_engine.state = EX_DISPATCH) then -- prepare update of next PC (using ALU's PC + IMM in EX_EXECUTE state)
-        if RISCV_ISA_C and (frontend_i.compr = '1') then -- is decompressed C instruction?
-          immediate <= x"00000002";
-        else
-          immediate <= x"00000004";
-        end if;
-      else
-        case opcode is
-          when opcode_store_c => -- S-immediate
-            immediate <= replicate_f(exe_engine.ir(31), 21) & exe_engine.ir(30 downto 25) & exe_engine.ir(11 downto 7);
-          when opcode_branch_c => -- B-immediate
-            immediate <= replicate_f(exe_engine.ir(31), 20) & exe_engine.ir(7) & exe_engine.ir(30 downto 25) & exe_engine.ir(11 downto 8) & '0';
-          when opcode_lui_c | opcode_auipc_c => -- U-immediate
-            immediate <= exe_engine.ir(31 downto 12) & x"000";
-          when opcode_jal_c => -- J-immediate
-            immediate <= replicate_f(exe_engine.ir(31), 12) & exe_engine.ir(19 downto 12) & exe_engine.ir(20) & exe_engine.ir(30 downto 21) & '0';
-          when opcode_amo_c => -- atomic memory access
-            immediate <= (others => '0');
-          when others => -- I-immediate
-            immediate <= replicate_f(exe_engine.ir(31), 21) & exe_engine.ir(30 downto 21) & exe_engine.ir(20);
-        end case;
-      end if;
+      case opcode is
+        when opcode_store_c => -- S-immediate
+          immediate <= replicate_f(exe_engine.ir(31), 21) & exe_engine.ir(30 downto 25) & exe_engine.ir(11 downto 7);
+        when opcode_branch_c => -- B-immediate
+          immediate <= replicate_f(exe_engine.ir(31), 20) & exe_engine.ir(7) & exe_engine.ir(30 downto 25) & exe_engine.ir(11 downto 8) & '0';
+        when opcode_lui_c | opcode_auipc_c => -- U-immediate
+          immediate <= exe_engine.ir(31 downto 12) & x"000";
+        when opcode_jal_c => -- J-immediate
+          immediate <= replicate_f(exe_engine.ir(31), 12) & exe_engine.ir(19 downto 12) & exe_engine.ir(20) & exe_engine.ir(30 downto 21) & '0';
+        when opcode_amo_c => -- atomic memory access
+          immediate <= (others => '0');
+        when others => -- I-immediate
+          immediate <= replicate_f(exe_engine.ir(31), 21) & exe_engine.ir(30 downto 21) & exe_engine.ir(20);
+      end case;
     end if;
   end process imm_gen;
 
@@ -347,11 +339,8 @@ begin
         if_reset             <= '1';
         exe_engine_nxt.state <= EX_BRANCHED; -- delay cycle to restart front-end
 
-      when EX_DISPATCH => -- wait for ISSUE ENGINE to emit a valid instruction word
+      when EX_FETCH => -- wait for ISSUE ENGINE to emit a valid instruction word
       -- ------------------------------------------------------------
-        ctrl_nxt.alu_opa_mux <= '1'; -- prepare update of next PC in EX_EXECUTE (opa = current PC)
-        ctrl_nxt.alu_opb_mux <= '1'; -- prepare update of next PC in EX_EXECUTE (opb = imm = +2/4)
-        --
         if (trap_ctrl.env_pending = '1') or (trap_ctrl.exc_fire = '1') then -- pending trap or pending exception (fast)
           exe_engine_nxt.state <= EX_TRAP_ENTER;
         elsif (frontend_i.valid = '1') and (hwtrig_i = '0') then -- new instruction word available and no pending HW trigger
@@ -360,7 +349,12 @@ begin
           exe_engine_nxt.ci    <= frontend_i.compr; -- this is a de-compressed instruction
           exe_engine_nxt.ir    <= frontend_i.instr; -- instruction word
           exe_engine_nxt.pc    <= exe_engine.pc2(XLEN-1 downto 1) & '0'; -- PC <= next PC
-          exe_engine_nxt.state <= EX_EXECUTE; -- start executing new instruction
+          exe_engine_nxt.state <= EX_DECODE; -- start executing new instruction
+          if RISCV_ISA_C and (frontend_i.compr = '1') then -- is decompressed C instruction?
+            exe_engine_nxt.pc2 <= std_ulogic_vector(unsigned(exe_engine.pc2) + 2); -- PC <= next PC
+          else
+            exe_engine_nxt.pc2 <= std_ulogic_vector(unsigned(exe_engine.pc2) + 4); -- PC <= next PC
+          end if;
         end if;
 
       when EX_TRAP_ENTER => -- enter trap environment and jump to trap vector
@@ -390,7 +384,7 @@ begin
         trap_ctrl.env_exit   <= '1';
         exe_engine_nxt.state <= EX_RESTART; -- restart instruction fetch
 
-      when EX_EXECUTE => -- decode and prepare execution (FSM will be here for exactly 1 cycle in any case)
+      when EX_DECODE => -- decode and prepare execution (FSM will be here for exactly 1 cycle in any case)
       -- ------------------------------------------------------------
         exe_engine_nxt.pc2 <= alu_add_i(XLEN-1 downto 1) & '0'; -- next PC = PC + immediate
 
@@ -424,7 +418,7 @@ begin
                                        ((funct3_v = funct3_xor_c)  and (funct7_v = "0000000")) or ((funct3_v = funct3_or_c)   and (funct7_v = "0000000")) or
                                        ((funct3_v = funct3_and_c)  and (funct7_v = "0000000")))) then -- base ALU instruction (excluding SLL, SRL, SRA)
               ctrl_nxt.rf_wb_en    <= '1'; -- valid RF write-back (won't happen if exception)
-              exe_engine_nxt.state <= EX_DISPATCH;
+              exe_engine_nxt.state <= EX_FETCH;
             else -- [NOTE] illegal ALU[I] instructions are handled as multi-cycle operations that will time-out as no ALU co-processor responds
               ctrl_nxt.alu_cp_alu  <= '1'; -- trigger ALU[I] opcode-space co-processor
               exe_engine_nxt.state <= EX_ALU_WAIT;
@@ -434,13 +428,13 @@ begin
           when opcode_lui_c =>
             ctrl_nxt.alu_op      <= alu_op_movb_c; -- pass immediate
             ctrl_nxt.rf_wb_en    <= '1'; -- valid RF write-back (won't happen if exception)
-            exe_engine_nxt.state <= EX_DISPATCH;
+            exe_engine_nxt.state <= EX_FETCH;
 
           -- add upper immediate to PC --
           when opcode_auipc_c =>
             ctrl_nxt.alu_op      <= alu_op_add_c; -- add PC and immediate
             ctrl_nxt.rf_wb_en    <= '1'; -- valid RF write-back (won't happen if exception)
-            exe_engine_nxt.state <= EX_DISPATCH;
+            exe_engine_nxt.state <= EX_FETCH;
 
           -- memory access --
           when opcode_load_c | opcode_store_c | opcode_amo_c =>
@@ -478,14 +472,14 @@ begin
             end if;
             exe_engine_nxt.state <= EX_SYSTEM;
 
-        end case; -- /EX_EXECUTE
+        end case; -- /EX_DECODE
 
       when EX_ALU_WAIT => -- wait for multi-cycle ALU co-processor operation to finish or trap
       -- ------------------------------------------------------------
         ctrl_nxt.alu_op   <= alu_op_cp_c;
         ctrl_nxt.rf_wb_en <= alu_cp_done_i; -- valid RF write-back (won't happen if exception)
         if (alu_cp_done_i = '1') or (or_reduce_f(trap_ctrl.exc_buf(exc_ialign_c downto exc_iaccess_c)) = '1') then
-          exe_engine_nxt.state <= EX_DISPATCH;
+          exe_engine_nxt.state <= EX_FETCH;
         end if;
 
       when EX_BRANCH => -- update next PC on taken branches and jumps
@@ -498,12 +492,12 @@ begin
           exe_engine_nxt.pc2   <= alu_add_i(XLEN-1 downto 1) & '0';
           exe_engine_nxt.state <= EX_BRANCHED; -- shortcut (faster than going to EX_RESTART)
         else
-          exe_engine_nxt.state <= EX_DISPATCH;
+          exe_engine_nxt.state <= EX_FETCH;
         end if;
 
       when EX_BRANCHED => -- delay cycle to wait for reset of front-end (instruction fetch)
       -- ------------------------------------------------------------
-        exe_engine_nxt.state <= EX_DISPATCH;
+        exe_engine_nxt.state <= EX_FETCH;
 
       when EX_MEM_REQ => -- trigger memory request
       -- ------------------------------------------------------------
@@ -511,7 +505,7 @@ begin
           ctrl_nxt.lsu_req     <= '1';
           exe_engine_nxt.state <= EX_MEM_RSP;
         else
-          exe_engine_nxt.state <= EX_DISPATCH;
+          exe_engine_nxt.state <= EX_FETCH;
         end if;
 
       when EX_MEM_RSP => -- wait for memory response
@@ -519,25 +513,25 @@ begin
         if (lsu_wait_i = '0') or -- bus system has completed the transaction (if there was any)
            (or_reduce_f(trap_ctrl.exc_buf(exc_laccess_c downto exc_salign_c)) = '1') then -- load/store exception
           ctrl_nxt.rf_wb_en    <= (not ctrl.lsu_rw) or ctrl.lsu_amo; -- write-back to register file if read operation (won't happen in case of exception)
-          exe_engine_nxt.state <= EX_DISPATCH;
+          exe_engine_nxt.state <= EX_FETCH;
         end if;
 
       when EX_SLEEP => -- sleep mode
       -- ------------------------------------------------------------
         if (or_reduce_f(trap_ctrl.irq_buf) = '1') or (debug_ctrl.run = '1') or (csr.dcsr_step = '1') then -- enabled pending IRQ, debug-mode, single-step
-          exe_engine_nxt.state <= EX_DISPATCH;
+          exe_engine_nxt.state <= EX_FETCH;
         end if;
 
       when EX_SYSTEM => -- CSR/ENVIRONMENT operation; no effect if illegal instruction
       -- ------------------------------------------------------------
-        exe_engine_nxt.state <= EX_DISPATCH; -- default
+        exe_engine_nxt.state <= EX_FETCH; -- default
         if (funct3_v = funct3_env_c) and (or_reduce_f(trap_ctrl.exc_buf(exc_ialign_c downto exc_iaccess_c)) = '0') then -- non-illegal ENV instruction
           case exe_engine.ir(instr_imm12_lsb_c+2 downto instr_imm12_lsb_c) is -- three LSBs are sufficient here
             when "000"  => trap_ctrl.ecall      <= '1'; -- ecall
             when "001"  => trap_ctrl.ebreak     <= '1'; -- ebreak
             when "010"  => exe_engine_nxt.state <= EX_TRAP_EXIT; -- xret
             when "101"  => exe_engine_nxt.state <= EX_SLEEP; -- wfi
-            when others => exe_engine_nxt.state <= EX_DISPATCH; -- illegal or CSR operation
+            when others => exe_engine_nxt.state <= EX_FETCH; -- illegal or CSR operation
           end case;
         end if;
         -- always write to CSR (if CSR instruction); ENVIRONMENT operations have rs1/imm5 = zero so this won't happen then --
@@ -808,7 +802,7 @@ begin
 
   -- Illegal Operation Check ----------------------------------------------------------------
   -- -------------------------------------------------------------------------------------------
-  trap_ctrl.instr_il <= '1' when ((exe_engine.state = EX_EXECUTE) or (exe_engine.state = EX_ALU_WAIT)) and -- check in execution states only
+  trap_ctrl.instr_il <= '1' when ((exe_engine.state = EX_DECODE) or (exe_engine.state = EX_ALU_WAIT)) and -- check in execution states only
                                  ((monitor_exc = '1') or (illegal_cmd = '1')) else '0'; -- instruction timeout or illegal instruction
 
 
@@ -950,14 +944,14 @@ begin
 
   -- any system interrupt? --
   trap_ctrl.irq_fire(0) <= '1' when
-    (exe_engine.state = EX_EXECUTE) and -- trigger system IRQ only in EX_EXECUTE state
+    (exe_engine.state = EX_DECODE) and -- trigger system IRQ only in EX_DECODE state
     (or_reduce_f(trap_ctrl.irq_buf(irq_firq_15_c downto irq_msi_irq_c)) = '1') and -- pending system IRQ
     ((csr.mstatus_mie = '1') or (csr.prv_level = priv_mode_u_c)) and -- IRQ only when in M-mode and MIE=1 OR when in U-mode
     (debug_ctrl.run = '0') and (csr.dcsr_step = '0') else '0'; -- no system IRQs when in debug-mode / during single-stepping
 
   -- debug-entry halt interrupt? --
   trap_ctrl.irq_fire(1) <= trap_ctrl.irq_buf(irq_db_halt_c) when
-    (exe_engine.state = EX_EXECUTE) or (exe_engine.state = EX_BRANCHED) else '0'; -- allow halt also after "reset" (#879)
+    (exe_engine.state = EX_DECODE) or (exe_engine.state = EX_BRANCHED) else '0'; -- allow halt also after "reset" (#879)
 
 
   -- ****************************************************************************************************************************
@@ -1388,11 +1382,11 @@ begin
   -- RISC-V-compliant counter events --
   cnt_event(cnt_event_cy_c) <= '0' when (exe_engine.state = EX_SLEEP) else '1'; -- active cycle
   cnt_event(cnt_event_tm_c) <= '0'; -- time: not available
-  cnt_event(cnt_event_ir_c) <= '1' when (exe_engine.state = EX_EXECUTE) else '0'; -- retired (=executed) instruction
+  cnt_event(cnt_event_ir_c) <= '1' when (exe_engine.state = EX_DECODE) else '0'; -- retired (=executed) instruction
 
   -- NEORV32-specific counter events --
-  cnt_event(cnt_event_compr_c)    <= '1' when (exe_engine.state = EX_EXECUTE)  and (exe_engine.ci = '1')        else '0'; -- executed compressed instruction
-  cnt_event(cnt_event_wait_dis_c) <= '1' when (exe_engine.state = EX_DISPATCH) and (frontend_i.valid = '0')     else '0'; -- instruction dispatch wait cycle
+  cnt_event(cnt_event_compr_c)    <= '1' when (exe_engine.state = EX_DECODE)  and (exe_engine.ci = '1')        else '0'; -- executed compressed instruction
+  cnt_event(cnt_event_wait_dis_c) <= '1' when (exe_engine.state = EX_FETCH) and (frontend_i.valid = '0')     else '0'; -- instruction dispatch wait cycle
   cnt_event(cnt_event_wait_alu_c) <= '1' when (exe_engine.state = EX_ALU_WAIT)                                  else '0'; -- multi-cycle ALU wait cycle
   cnt_event(cnt_event_branch_c)   <= '1' when (exe_engine.state = EX_BRANCH)                                    else '0'; -- executed branch instruction
   cnt_event(cnt_event_branched_c) <= '1' when (exe_engine.state = EX_BRANCHED)                                  else '0'; -- control flow transfer
