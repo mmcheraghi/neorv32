@@ -126,6 +126,7 @@ begin
       -- ------------------------------------------------------------
         ibus_req_o.burst      <= bool_to_ulogic_f(BURSTS_EN);
         ibus_req_o.lock       <= '1';
+        ibus_req_o.stb        <= '1';
         
         if (ibus_rsp_i.ack = '1') then -- wait for bus response
           fetch_nxt.pc        <= fetch.pc2;
@@ -136,7 +137,6 @@ begin
           elsif (BURSTS_EN) and ((unsigned(ipb.level(0)) < FIFO_DEPTH-1) and 
                                  (unsigned(ipb.level(1)) < FIFO_DEPTH-1)) then -- request next linear instruction word
             fetch_nxt.state   <= S_PENDING;
-            ibus_req_o.stb    <= '1';
             ibus_req_o.burst  <= bool_to_ulogic_f(BURSTS_EN);
             ibus_req_o.lock   <= '1';
             fetch_nxt.pc2     <= std_ulogic_vector(unsigned(fetch.pc2) + 4); -- next word
