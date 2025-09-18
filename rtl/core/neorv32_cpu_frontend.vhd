@@ -21,8 +21,10 @@ use neorv32.neorv32_package.all;
 
 entity neorv32_cpu_frontend is
   generic (
-    RISCV_C   : boolean; -- implement C ISA extension
-    RISCV_ZCB : boolean  -- implement Zcb ISA sub-extension
+    BURSTS_EN  : boolean := true; -- implement burst IPB filling mode
+    FIFO_DEPTH : natural := 4;     -- number of FIFO entries; has to be a power of two; min 1
+    RISCV_C    : boolean; -- implement C ISA extension
+    RISCV_ZCB  : boolean  -- implement Zcb ISA sub-extension
   );
   port (
     -- global control --
@@ -49,6 +51,7 @@ architecture neorv32_cpu_frontend_rtl of neorv32_cpu_frontend is
     clk_i   : in  std_ulogic;
     rstn_i  : in  std_ulogic;
     clear_i : in  std_ulogic;
+    level_o : out std_ulogic_vector(31 downto 0);
     wdata_i : in  std_ulogic_vector(DWIDTH-1 downto 0);
     we_i    : in  std_ulogic;
     free_o  : out std_ulogic;
@@ -64,16 +67,19 @@ architecture neorv32_cpu_frontend_rtl of neorv32_cpu_frontend is
     state   : state_t;
     restart : std_ulogic; -- buffered restart request (after branch)
     pc      : std_ulogic_vector(XLEN-1 downto 0);
+    pc2     : std_ulogic_vector(XLEN-1 downto 0);
     priv    : std_ulogic; -- fetch privilege level
   end record;
-  signal fetch : fetch_t;
+  signal fetch, fetch_nxt : fetch_t;
 
   -- instruction prefetch buffer (FIFO) interface --
   type ipb_data_t is array (0 to 1) of std_ulogic_vector(16 downto 0); -- bus_error & 16-bit instruction
+  type ipb_level_t is array (0 to 1) of std_ulogic_vector(31 downto 0); -- ipb level signal
   type ipb_t is record
     wdata, rdata : ipb_data_t;
     we,    re    : std_ulogic_vector(1 downto 0);
     free,  avail : std_ulogic_vector(1 downto 0);
+    level        : ipb_level_t;
   end record;
   signal ipb : ipb_t;
 
@@ -91,7 +97,7 @@ begin
 
   -- Fetch Engine FSM -----------------------------------------------------------------------
   -- -------------------------------------------------------------------------------------------
-  fetch_fsm: process(rstn_i, clk_i)
+  fetch_fsm_sync: process(rstn_i, clk_i)
   begin
     if (rstn_i = '0') then
       fetch.state   <= S_RESTART;
@@ -99,48 +105,78 @@ begin
       fetch.pc      <= (others => '0');
       fetch.priv    <= priv_mode_m_c;
     elsif rising_edge(clk_i) then
-      case fetch.state is
-
-        when S_RESTART => -- set new start address
-        -- ------------------------------------------------------------
-          fetch.restart <= '0'; -- restart done
-          fetch.pc      <= ctrl_i.pc_nxt; -- initialize from PC
-          fetch.priv    <= ctrl_i.cpu_priv; -- set new privilege level
-          fetch.state   <= S_REQUEST;
-
-        when S_REQUEST => -- request next 32-bit-aligned instruction word
-        -- ------------------------------------------------------------
-          fetch.restart <= fetch.restart or ctrl_i.if_reset; -- buffer restart request
-          if (ipb.free = "11") then -- free IPB space?
-            fetch.state <= S_PENDING;
-          elsif (fetch.restart = '1') or (ctrl_i.if_reset = '1') then -- restart because of branch
-            fetch.state <= S_RESTART;
-          end if;
-
-        when S_PENDING => -- wait for bus response and write instruction data to prefetch buffer
-        -- ------------------------------------------------------------
-          fetch.restart <= fetch.restart or ctrl_i.if_reset; -- buffer restart request
-          if (ibus_rsp_i.ack = '1') then -- wait for bus response
-            fetch.pc    <= std_ulogic_vector(unsigned(fetch.pc) + 4); -- next word
-            fetch.pc(1) <= '0'; -- (re-)align to 32-bit
-            if (fetch.restart = '1') or (ctrl_i.if_reset = '1') then -- restart request due to branch
-              fetch.state <= S_RESTART;
-            else -- request next linear instruction word
-              fetch.state <= S_REQUEST;
-            end if;
-          end if;
-
-        when others => -- undefined
-        -- ------------------------------------------------------------
-          fetch.state <= S_RESTART;
-
-      end case;
+      fetch         <= fetch_nxt;
     end if;
-  end process fetch_fsm;
+  end process fetch_fsm_sync;
+
+  fetch_fsm_comb: process(fetch, ipb, ctrl_i, ibus_rsp_i)
+  begin
+    fetch_nxt         <= fetch;
+    fetch_nxt.restart <= fetch.restart or ctrl_i.if_reset; -- buffer restart request
+
+    ibus_req_o.burst  <= '0';              -- single-access as default
+    ibus_req_o.lock   <= '0';              -- unlocked access as default
+    ibus_req_o.stb    <= '0';              -- unset strobe as default
+
+    case fetch.state is
+
+      when S_RESTART => -- set new start address
+      -- ------------------------------------------------------------
+        fetch_nxt.restart <= '0'; -- restart done
+        fetch_nxt.pc      <= ctrl_i.pc_nxt; -- initialize from PC
+        fetch_nxt.pc2     <= ctrl_i.pc_nxt; -- initialize from PC2
+        fetch_nxt.priv    <= ctrl_i.cpu_priv; -- set new privilege level
+        fetch_nxt.state   <= S_REQUEST;
+
+      when S_REQUEST => -- request next 32-bit-aligned instruction word
+      -- ------------------------------------------------------------
+        if (fetch.restart = '1') or (ctrl_i.if_reset = '1') then -- restart because of branch
+          fetch_nxt.state <= S_RESTART;
+        elsif (ipb.free = "11") then -- free IPB space?
+          fetch_nxt.state   <= S_PENDING;
+          ibus_req_o.stb    <= '1';
+          ibus_req_o.burst  <= bool_to_ulogic_f(BURSTS_EN);
+          ibus_req_o.lock   <= '1';
+          fetch_nxt.pc2     <= std_ulogic_vector(unsigned(fetch.pc2) + 4); -- next word
+          fetch_nxt.pc2(1)  <= '0'; -- (re-)align to 32-bit
+        end if;
+
+      when S_PENDING => -- wait for bus response and write instruction data to prefetch buffer
+      -- ------------------------------------------------------------
+        ibus_req_o.burst      <= bool_to_ulogic_f(BURSTS_EN);
+        ibus_req_o.lock       <= '1';
+        
+        if (ibus_rsp_i.ack = '1') then -- wait for bus response
+          fetch_nxt.pc        <= fetch.pc2;
+          if (fetch.restart = '1') or (ctrl_i.if_reset = '1') then -- restart request due to branch
+            fetch_nxt.state   <= S_RESTART;
+            ibus_req_o.burst  <= '0';
+            ibus_req_o.lock   <= '0';
+          elsif (BURSTS_EN) and ((unsigned(ipb.level(0)) < FIFO_DEPTH-1) and 
+                                 (unsigned(ipb.level(1)) < FIFO_DEPTH-1)) then -- request next linear instruction word
+            fetch_nxt.state   <= S_PENDING;
+            ibus_req_o.stb    <= '1';
+            ibus_req_o.burst  <= bool_to_ulogic_f(BURSTS_EN);
+            ibus_req_o.lock   <= '1';
+            fetch_nxt.pc2     <= std_ulogic_vector(unsigned(fetch.pc2) + 4); -- next word
+            fetch_nxt.pc2(1)  <= '0'; -- (re-)align to 32-bit
+          else -- request next linear instruction word
+            fetch_nxt.state   <= S_REQUEST;
+            ibus_req_o.burst  <= '0';
+            ibus_req_o.lock   <= '0';
+          end if;
+        end if;
+
+      when others => -- undefined
+      -- ------------------------------------------------------------
+        fetch_nxt.state <= S_RESTART;
+
+    end case;
+  end process fetch_fsm_comb;
 
   -- instruction bus request --
-  ibus_req_o.addr  <= fetch.pc(XLEN-1 downto 2) & "00"; -- word aligned
-  ibus_req_o.stb   <= '1' when (fetch.state = S_REQUEST) and (ipb.free = "11") else '0';
+  ibus_req_o.addr  <= fetch.pc2(XLEN-1 downto 2) & "00" when (fetch.state = S_PENDING) and (ibus_rsp_i.ack = '1') else 
+                      fetch.pc (XLEN-1 downto 2) & "00"; -- word aligned
   ibus_req_o.data  <= (others => '0');  -- read-only
   ibus_req_o.ben   <= (others => '1');  -- always full-word access
   ibus_req_o.rw    <= '0';              -- read-only
@@ -149,8 +185,6 @@ begin
   ibus_req_o.debug <= ctrl_i.cpu_debug; -- CPU is in debug mode
   ibus_req_o.amo   <= '0';              -- cannot be an atomic memory operation
   ibus_req_o.amoop <= (others => '0');  -- cannot be an atomic memory operation
-  ibus_req_o.burst <= '0';              -- only single-access
-  ibus_req_o.lock  <= '0';              -- always unlocked access
   ibus_req_o.fence <= ctrl_i.if_fence;  -- fence request, valid without STB being set ("out-of-band" signal)
 
   -- IPB instruction data and status --
@@ -168,7 +202,7 @@ begin
   for i in 0 to 1 generate
     ipb_inst: neorv32_cpu_frontend_ipb
     generic map (
-      AWIDTH => 1, -- 1 address bit = 2 entries
+      AWIDTH => index_size_f(FIFO_DEPTH), -- e.g. 1 address bit = 2 entries
       DWIDTH => 17 -- error status & instruction half-word data
     )
     port map (
@@ -176,6 +210,7 @@ begin
       clk_i   => clk_i,         -- clock, rising edge
       rstn_i  => rstn_i,        -- async reset, low-active
       clear_i => fetch.restart, -- sync reset, high-active
+      level_o => ipb.level(i),  -- IPB fill level
       -- write port --
       wdata_i => ipb.wdata(i),  -- write data
       we_i    => ipb.we(i),     -- write enable
@@ -320,6 +355,7 @@ entity neorv32_cpu_frontend_ipb is
     clk_i   : in  std_ulogic; -- clock, rising edge
     rstn_i  : in  std_ulogic; -- async reset, low-active
     clear_i : in  std_ulogic; -- sync reset, high-active
+    level_o : out std_ulogic_vector(31 downto 0); -- fill level, zero-extended, 0 to fifo depth
     -- write port --
     wdata_i : in  std_ulogic_vector(DWIDTH-1 downto 0); -- write data
     we_i    : in  std_ulogic; -- write enable
@@ -334,8 +370,8 @@ end neorv32_cpu_frontend_ipb;
 architecture neorv32_cpu_frontend_ipb_rtl of neorv32_cpu_frontend_ipb is
 
   -- pointers and status --
-  signal w_pnt, r_pnt : std_ulogic_vector(AWIDTH downto 0);
-  signal match, empty, full : std_ulogic;
+  signal w_pnt, r_pnt, level : std_ulogic_vector(AWIDTH downto 0);
+  signal match, empty, full  : std_ulogic;
 
   -- memory core --
   type ipb_t is array (0 to (2**AWIDTH)-1) of std_ulogic_vector(DWIDTH-1 downto 0);
@@ -370,6 +406,14 @@ begin
   empty   <= '1' when (r_pnt(AWIDTH)  = w_pnt(AWIDTH)) and (match = '1') else '0';
   free_o  <= not full;
   avail_o <= not empty;
+
+  -- fill level, zero-extended --
+  level   <= std_ulogic_vector(unsigned(w_pnt) - unsigned(r_pnt));
+  level_extend: process(level)
+  begin
+    level_o <= (others => '0');
+    level_o(level'left downto 0) <= level(level'left downto 0);
+  end process level_extend;
 
   -- Memory Core ----------------------------------------------------------------------------
   -- -------------------------------------------------------------------------------------------
