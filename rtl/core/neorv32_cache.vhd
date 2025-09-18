@@ -199,6 +199,9 @@ begin
             host_rsp_o.ack <= '1';
             host_rsp_o.err <= cache_i.stat;
             ctrl_nxt.state <= S_IDLE;
+            if ((host_req_i.lock = '1') and (host_req_i.burst = '1') and (host_req_i.stb = '1')) then
+              ctrl_nxt.state <= S_CHECK;
+            end if;
           elsif (WRITE_THROUGH = true) then -- write-through: write to main memory and also to the cache
             cache_o.we     <= host_req_i.ben;
             bus_req_o.stb  <= '1';
