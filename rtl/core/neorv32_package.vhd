@@ -573,6 +573,7 @@ package neorv32_package is
     ir_funct3    : std_ulogic_vector(2 downto 0);  -- funct3 bit field
     ir_funct12   : std_ulogic_vector(11 downto 0); -- funct12 bit field
     ir_opcode    : std_ulogic_vector(6 downto 0);  -- opcode bit field
+    ir           : std_ulogic_vector(31 downto 0);  -- instruction itself
     -- status --
     cpu_priv     : std_ulogic;                     -- effective privilege mode
     cpu_trap     : std_ulogic;                     -- set when CPU is entering trap exec
@@ -617,6 +618,7 @@ package neorv32_package is
     ir_funct3    => (others => '0'),
     ir_funct12   => (others => '0'),
     ir_opcode    => (others => '0'),
+    ir           => (others => '0'),
     cpu_priv     => '0',
     cpu_trap     => '0',
     cpu_debug    => '0'
