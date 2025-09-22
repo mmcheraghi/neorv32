@@ -15,7 +15,7 @@ FPGA / RISC-V beginners as well as advanced users.
 Special focus is paid on **execution safety** to provide defined and predictable behavior at any time.
 For example, the CPU ensures _all_ memory accesses are properly acknowledged and _all_ invalid/malformed
 instructions are always detected as such. Whenever an unexpected state occurs the application software is
-informed via _precise_ and resumable hardware exceptions.
+informed via _precise_ and resumable hardware exceptions. In fact the processor contains a light pipeline architecture.
 
 ![neorv32 Overview](docs/figures/neorv32_processor.png)
 
